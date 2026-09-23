@@ -84,9 +84,10 @@ Never commit the service-account JSON file to GitHub.
 
 ## Referral configuration
 
-Set `MERCOR_REFERRAL_URL` only to the exact referral URL from the owner's Mercor account.
-When present, Mercor posts use it as the main CTA, keep the original listing as a secondary
-link, and display an explicit disclosure.
+The deployment defaults to the owner's verified `https://t.mercor.com/H06sH` referral
+URL. A `MERCOR_REFERRAL_URL` repository secret can override it without changing code.
+Mercor posts use it as the main CTA, keep the original listing as a secondary link, and
+display an explicit disclosure.
 
 Referral posts are capped at 20% of each run by default. This prevents monetization from
 overpowering usefulness. Mercor listings with no stated location are classified as
