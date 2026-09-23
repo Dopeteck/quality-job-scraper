@@ -36,9 +36,9 @@ location data have been checked.
 
 ## Sheet design
 
-Create a new empty tab named `QualityJobs` in the existing **Job Aggregator Database**.
-The scraper creates its header automatically. Its first seven columns remain compatible
-with the old `RawJobs` layout:
+Use the dedicated **Quality Job Scraper** workbook and its `QualityJobs` tab. The supplied
+workbook already contains the exact header and a separate `Setup` tab. Its first seven
+columns remain compatible with the old `RawJobs` layout:
 
 ```text
 scrape_timestamp | source | title | company | location | job_url | processed
@@ -49,8 +49,8 @@ It then adds the fields required for quality control and better Telegram posts, 
 `is_referral`, `direct_url`, `canonical_url` and `fingerprint`.
 
 Do not point Make at `QualityJobs` until a dry run and one controlled live row have been
-checked. The unidentified legacy scraper may continue writing to `RawJobs`; it will no
-longer affect the channel after Make is switched.
+checked. The legacy scraper may continue writing to the old workbook or `RawJobs`; it will
+no longer affect the channel after Make is switched.
 
 ## Local test
 
