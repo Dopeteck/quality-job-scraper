@@ -1,0 +1,47 @@
+name: Collect quality jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only; do not write to Google Sheets"
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    # 07:15 West Africa Time (UTC+1), every day.
+    - cron: "15 6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-job-scraper
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install .
+      - name: Collect, score and publish
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_WORKSHEET: QualityJobs
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          MERCOR_REFERRAL_URL: ${{ secrets.MERCOR_REFERRAL_URL }}
+          OUTLIER_REFERRAL_URL: ${{ secrets.OUTLIER_REFERRAL_URL }}
+          USER_AGENT: Web3TechJobsHub/1.0
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            quality-jobs --dry-run
+          else
+            quality-jobs
+          fi

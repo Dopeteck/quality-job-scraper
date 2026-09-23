@@ -1,0 +1,154 @@
+from __future__ import annotations
+
+import logging
+import math
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from .classify import classify
+from .config import Settings
+from .formatting import build_telegram_post
+from .linkcheck import check_link
+from .models import Job
+from .scoring import accepted, score_job
+from .text import canonicalize_url, fingerprint
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _prepare(job: Job, settings: Settings) -> Job:
+    job.canonical_url = canonicalize_url(job.direct_url)
+    job.fingerprint = fingerprint(job.title, job.company)
+    classify(job)
+    score_job(job, settings)
+    return job
+
+
+def _worth_checking(job: Job, settings: Settings) -> bool:
+    return (
+        job.quality_score > -100
+        and (not settings.require_known_location or job.remote_scope != "unknown")
+        and job.quality_score >= settings.min_quality_score - 1
+    )
+
+
+def enrich(job: Job, settings: Settings) -> Job:
+    _prepare(job, settings)
+    worth_checking = (
+        settings.link_check_enabled and _worth_checking(job, settings)
+    )
+    if worth_checking:
+        job.link_status = check_link(
+            job.direct_url,
+            timeout=settings.request_timeout_seconds,
+            user_agent=settings.user_agent,
+        )
+    score_job(job, settings)
+    job.telegram_post = build_telegram_post(job)
+    return job
+
+
+def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
+    selected: list[Job] = []
+    source_counts: Counter[str] = Counter()
+    referral_limit = math.floor(settings.max_per_run * settings.max_referral_share)
+    referral_count = 0
+    ranked = sorted(jobs, key=lambda item: item.quality_score, reverse=True)
+
+    def add_from(pool: list[Job], limit: int) -> None:
+        nonlocal referral_count
+        added = 0
+        for job in pool:
+            if len(selected) >= settings.max_per_run or added >= limit:
+                break
+            if job in selected or source_counts[job.source] >= settings.max_per_source:
+                continue
+            if job.is_referral and referral_count >= referral_limit:
+                continue
+            selected.append(job)
+            source_counts[job.source] += 1
+            referral_count += int(job.is_referral)
+            added += 1
+
+    entry_target = math.ceil(settings.max_per_run * settings.entry_priority_share)
+    ai_target = math.ceil(settings.max_per_run * settings.ai_priority_share)
+    add_from([job for job in ranked if job.experience_level == "entry"], entry_target)
+    add_from([job for job in ranked if job.category == "ai"], ai_target)
+    add_from(ranked, settings.max_per_run)
+    return sorted(selected, key=lambda item: item.quality_score, reverse=True)
+
+
+def process(
+    jobs: list[Job],
+    settings: Settings,
+    existing_urls: set[str] | None = None,
+    existing_fingerprints: set[str] | None = None,
+) -> tuple[list[Job], list[Job]]:
+    seen_urls = set(existing_urls or set())
+    seen_fingerprints = set(existing_fingerprints or set())
+    prepared = [_prepare(job, settings) for job in jobs]
+    if settings.link_check_enabled:
+        candidate_pool = sorted(
+            (job for job in prepared if _worth_checking(job, settings)),
+            key=lambda item: item.quality_score,
+            reverse=True,
+        )
+        priority_pool = (
+            [job for job in candidate_pool if job.experience_level == "entry"]
+            + [job for job in candidate_pool if job.category == "ai"]
+            + candidate_pool
+        )
+        candidates: list[Job] = []
+        candidate_source_counts: Counter[str] = Counter()
+        for job in priority_pool:
+            if len(candidates) >= settings.max_per_run * 2:
+                break
+            if job in candidates:
+                continue
+            if candidate_source_counts[job.source] >= settings.max_per_source * 2:
+                continue
+            candidates.append(job)
+            candidate_source_counts[job.source] += 1
+        workers = min(12, len(candidates))
+        if workers:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(
+                        check_link,
+                        job.direct_url,
+                        timeout=settings.request_timeout_seconds,
+                        user_agent=settings.user_agent,
+                    ): job
+                    for job in candidates
+                }
+                for future in as_completed(futures):
+                    futures[future].link_status = future.result()
+
+    for job in prepared:
+        score_job(job, settings)
+        job.telegram_post = build_telegram_post(job)
+
+    accepted_jobs: list[Job] = []
+    rejected_jobs: list[Job] = []
+
+    for job in prepared:
+        if not job.canonical_url:
+            job.quality_score = -100
+            job.quality_reasons = ["rejected: missing URL"]
+        if job.canonical_url in seen_urls or job.fingerprint in seen_fingerprints:
+            job.quality_score = -100
+            job.quality_reasons = ["rejected: duplicate"]
+        if accepted(job, settings):
+            accepted_jobs.append(job)
+            seen_urls.add(job.canonical_url)
+            seen_fingerprints.add(job.fingerprint)
+        else:
+            rejected_jobs.append(job)
+
+    selected = _balanced_limit(accepted_jobs, settings)
+    overflow = [job for job in accepted_jobs if job not in selected]
+    for job in overflow:
+        job.quality_reasons.append("held: per-run/source/referral balance limit")
+    rejected_jobs.extend(overflow)
+    LOGGER.info("accepted=%d rejected_or_held=%d", len(selected), len(rejected_jobs))
+    return selected, rejected_jobs

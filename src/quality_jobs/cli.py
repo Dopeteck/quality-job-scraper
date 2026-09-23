@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+
+from .config import Settings
+from .pipeline import process
+from .sheets import append_jobs, existing_keys, worksheet
+from .sources import SOURCE_FETCHERS, collect
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description="Collect and score quality remote jobs")
+    result.add_argument("--dry-run", action="store_true", help="Print accepted jobs; do not write")
+    result.add_argument("--no-link-check", action="store_true", help="Skip application URL checks")
+    result.add_argument(
+        "--source",
+        action="append",
+        choices=sorted(SOURCE_FETCHERS),
+        help="Run only this source; may be repeated",
+    )
+    result.add_argument("--json", action="store_true", help="Print accepted jobs as JSON")
+    return result
+
+
+def main() -> int:
+    args = parser().parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    settings = Settings.from_env()
+    if args.no_link_check:
+        object.__setattr__(settings, "link_check_enabled", False)
+
+    existing_urls: set[str] = set()
+    existing_fingerprints: set[str] = set()
+    ws = None
+    if not args.dry_run:
+        if not settings.google_sheet_id:
+            print("GOOGLE_SHEET_ID is required unless --dry-run is used", file=sys.stderr)
+            return 2
+        ws = worksheet(settings)
+        existing_urls, existing_fingerprints = existing_keys(ws)
+
+    raw_jobs = collect(settings, set(args.source or []))
+    accepted_jobs, rejected_jobs = process(
+        raw_jobs, settings, existing_urls, existing_fingerprints
+    )
+
+    if args.json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "source": job.source,
+                        "title": job.title,
+                        "company": job.company,
+                        "url": job.effective_url,
+                        "quality_score": job.quality_score,
+                        "telegram_post": job.telegram_post,
+                    }
+                    for job in accepted_jobs
+                ],
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        for job in accepted_jobs:
+            print(
+                f"ACCEPT {job.quality_score:>2} | {job.source:<16} | "
+                f"{job.title} — {job.company}"
+            )
+        print(f"Summary: accepted={len(accepted_jobs)} rejected_or_held={len(rejected_jobs)}")
+
+    if ws is not None:
+        append_jobs(ws, accepted_jobs)
+        print(f"Added {len(accepted_jobs)} rows to {settings.google_worksheet}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
