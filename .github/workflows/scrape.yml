@@ -42,6 +42,9 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             quality-jobs --dry-run
+          elif [ -z "$GOOGLE_SHEET_ID" ] || [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice::Google Sheets credentials are not configured; running a safe preview instead."
+            quality-jobs --dry-run
           else
             quality-jobs
           fi
