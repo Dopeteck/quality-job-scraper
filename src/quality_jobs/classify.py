@@ -109,6 +109,30 @@ def _contains(text: str, terms: set[str]) -> bool:
     return any(term in text for term in terms)
 
 
+def _explicitly_restricted_scope(text: str) -> str | None:
+    """Return a regional scope only when the listing states an applicant restriction."""
+    snippets = re.findall(
+        r"(?:location\s*:|must\s+reside|must\s+be\s+based|"
+        r"candidates?\s+(?:must\s+be|based|located)|"
+        r"open\s+(?:only\s+)?to|remote\s+from).{0,180}",
+        text,
+    )
+    for snippet in snippets:
+        if _contains(snippet, LATAM_TERMS):
+            return "latam"
+        if _contains(snippet, US_TERMS):
+            return "us_canada"
+        if _contains(snippet, ASIA_TERMS):
+            return "asia"
+        if _contains(snippet, MIDDLE_EAST_TERMS):
+            return "middle_east"
+        if _contains(snippet, EUROPE_TERMS):
+            return "emea" if "emea" in snippet else "europe"
+        if _contains(snippet, AFRICA_TERMS):
+            return "africa"
+    return None
+
+
 def classify(job: Job) -> Job:
     text = " ".join(
         [job.title, job.description, job.location, job.employment_type]
@@ -133,7 +157,10 @@ def classify(job: Job) -> Job:
     else:
         job.experience_level = "not_specified"
 
-    if _contains(text, WORLDWIDE_TERMS):
+    restricted_scope = _explicitly_restricted_scope(text)
+    if restricted_scope:
+        job.remote_scope = restricted_scope
+    elif _contains(text, WORLDWIDE_TERMS):
         job.remote_scope = "worldwide"
     elif _contains(text, AFRICA_TERMS):
         job.remote_scope = "africa"
