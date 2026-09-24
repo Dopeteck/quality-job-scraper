@@ -40,7 +40,7 @@ class Settings:
             part.strip().lower()
             for part in os.getenv(
                 "ALLOWED_REMOTE_SCOPES",
-                "worldwide,africa,emea,europe,latam,us_canada,us_ca_uk_eu,asia,middle_east",
+                "worldwide,africa,emea",
             ).split(",")
             if part.strip()
         )
