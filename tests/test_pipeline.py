@@ -189,6 +189,23 @@ def test_referral_share_is_capped():
     assert len(accepted) == 2
 
 
+def test_small_batch_can_include_one_referral_job():
+    items = [
+        job(
+            title=f"Junior AI Evaluator {index}",
+            direct_url=f"https://example.com/jobs/{index}",
+            referral_url="https://t.mercor.com/H06sH" if index == 0 else "",
+        )
+        for index in range(3)
+    ]
+    accepted, _ = process(
+        items,
+        settings(max_per_run=3, max_per_source=3, max_referral_share=0.2),
+    )
+    assert len(accepted) == 3
+    assert sum(item.is_referral for item in accepted) == 1
+
+
 def test_make_payload_matches_sheet_headers():
     accepted, _ = process([job()], settings())
     data = payload(accepted[0])
