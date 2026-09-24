@@ -5,6 +5,7 @@ from quality_jobs.models import Job
 from quality_jobs.pipeline import process
 from quality_jobs.text import canonicalize_url
 from quality_jobs.sources import _date
+from quality_jobs.webhook import payload
 
 
 def settings(**overrides) -> Settings:
@@ -12,6 +13,7 @@ def settings(**overrides) -> Settings:
         google_sheet_id="",
         google_worksheet="QualityJobs",
         google_service_account_json="",
+        make_webhook_url="",
         mercor_referral_url="",
         outlier_referral_url="",
         min_quality_score=8,
@@ -140,3 +142,12 @@ def test_referral_share_is_capped():
         settings(max_per_run=10, max_per_source=20, max_referral_share=0.2),
     )
     assert len(accepted) == 2
+
+
+def test_make_payload_matches_sheet_headers():
+    accepted, _ = process([job()], settings())
+    data = payload(accepted[0])
+    assert len(data) == 26
+    assert data["title"] == "Junior AI Response Evaluator"
+    assert data["processed"] is False
+    assert data["telegram_post"]
