@@ -74,7 +74,9 @@ def build_telegram_post(job: Job) -> str:
         lines.append(f"💵 {safe_html(job.salary)}")
     lines.append(f"🗓 {_age_label(job)}")
     strengths: list[str] = []
-    if job.africa_eligible:
+    if job.remote_scope == "worldwide":
+        strengths.append("remote-friendly")
+    elif job.africa_eligible:
         strengths.append("Africa-friendly")
     if job.experience_level == "entry":
         strengths.append("entry-friendly")
