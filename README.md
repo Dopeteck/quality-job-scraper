@@ -4,6 +4,11 @@ A zero-paid-API pipeline that finds, checks, scores and formats recent remote te
 Web3, AI-training and accessible entry-level opportunities. Accepted jobs are appended
 to a Google Sheets tab that an existing Make scenario can publish to Telegram.
 
+The recommended production route is GitHub Actions → Make webhook → `QualityJobs` →
+the existing Make Telegram publisher. Set `MAKE_WEBHOOK_URL` and the scraper sends one
+flat JSON object per accepted job using the same 26 names as the Sheet headers. Direct
+Google Sheets writing remains available as a fallback.
+
 ## What it fixes
 
 - rejects jobs older than the configured maximum (10 days by default)
@@ -89,8 +94,9 @@ URL. A `MERCOR_REFERRAL_URL` repository secret can override it without changing 
 Mercor posts use it as the main CTA, keep the original listing as a secondary link, and
 display an explicit disclosure.
 
-Referral posts are capped at 20% of each run by default. This prevents monetization from
-overpowering usefulness. Mercor listings with no stated location are classified as
+Referral posts are capped at 20% of each run by default, with a minimum allowance of one
+when referrals are enabled so small batches can still include a strong Mercor role. This
+prevents monetization from overpowering usefulness. Mercor listings with no stated location are classified as
 `us_ca_uk_eu`, not worldwide, in accordance with Mercor's published referral policy.
 
 The `OUTLIER_REFERRAL_URL` setting is reserved for a future source adapter. It is not used
@@ -101,6 +107,7 @@ supplied.
 
 1. Create a GitHub repository and upload this project.
 2. Add repository secrets:
+   - `MAKE_WEBHOOK_URL` (recommended)
    - `GOOGLE_SHEET_ID`
    - `GOOGLE_SERVICE_ACCOUNT_JSON`
    - `MERCOR_REFERRAL_URL` (optional)
