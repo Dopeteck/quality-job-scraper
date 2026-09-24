@@ -6,6 +6,7 @@ from quality_jobs.pipeline import process
 from quality_jobs.text import canonicalize_url
 from quality_jobs.sources import _date
 from quality_jobs.state import load_seen, save_seen
+from quality_jobs.site import payload as site_payload
 from quality_jobs.webhook import payload
 
 
@@ -195,6 +196,18 @@ def test_make_payload_matches_sheet_headers():
     assert data["title"] == "Junior AI Response Evaluator"
     assert data["processed"] is False
     assert data["telegram_post"]
+
+
+def test_site_payload_uses_effective_apply_url_and_iso_dates():
+    accepted, _ = process(
+        [job(referral_url="https://t.mercor.com/H06sH")],
+        settings(max_referral_share=1),
+    )
+    data = site_payload(accepted[0])
+    assert data["apply_url"] == "https://t.mercor.com/H06sH"
+    assert data["direct_url"].startswith("https://example.com/jobs/123")
+    assert data["remote_scope"] == "worldwide"
+    assert data["published_at"].endswith("+00:00")
 
 
 def test_seen_state_round_trip(tmp_path):
