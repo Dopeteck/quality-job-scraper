@@ -11,6 +11,7 @@ from .formatting import build_telegram_post
 from .linkcheck import check_link
 from .models import Job
 from .scoring import accepted, score_job
+from .sources import verify_candidate_details
 from .text import canonicalize_url, fingerprint
 
 LOGGER = logging.getLogger(__name__)
@@ -46,6 +47,22 @@ def enrich(job: Job, settings: Settings) -> Job:
     score_job(job, settings)
     job.telegram_post = build_telegram_post(job)
     return job
+
+
+def _verify_and_check(job: Job, settings: Settings) -> str:
+    details_verified = verify_candidate_details(job, settings)
+    _prepare(job, settings)
+    if not details_verified:
+        job.remote_scope = "unknown"
+        job.africa_eligible = False
+        score_job(job, settings)
+    if not _worth_checking(job, settings):
+        return "unchecked"
+    return check_link(
+        job.direct_url,
+        timeout=settings.request_timeout_seconds,
+        user_agent=settings.user_agent,
+    )
 
 
 def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
@@ -117,12 +134,7 @@ def process(
         if workers:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {
-                    executor.submit(
-                        check_link,
-                        job.direct_url,
-                        timeout=settings.request_timeout_seconds,
-                        user_agent=settings.user_agent,
-                    ): job
+                    executor.submit(_verify_and_check, job, settings): job
                     for job in candidates
                 }
                 for future in as_completed(futures):
