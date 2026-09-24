@@ -5,6 +5,8 @@ import json
 import logging
 import sys
 
+import requests
+
 from .config import Settings
 from .pipeline import process
 from .sheets import append_jobs, existing_keys, worksheet
@@ -86,8 +88,14 @@ def main() -> int:
         append_jobs(ws, accepted_jobs)
         print(f"Added {len(accepted_jobs)} rows to {settings.google_worksheet}")
     elif not args.dry_run and settings.make_webhook_url:
-        send_site_jobs(settings, accepted_jobs)
+        # The Make webhook is the primary publishing path because it feeds the
+        # Sheet and Telegram queue. A secondary website outage must never block
+        # that delivery or cause the full batch to be retried.
         send_jobs(settings, accepted_jobs)
+        try:
+            send_site_jobs(settings, accepted_jobs)
+        except (requests.RequestException, ValueError) as exc:
+            logging.warning("site_ingest_failed=%s", exc)
         save_seen(
             settings.state_path,
             existing_urls,
