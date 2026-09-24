@@ -224,7 +224,8 @@ def test_site_payload_uses_effective_apply_url_and_iso_dates():
     assert data["apply_url"] == "https://t.mercor.com/H06sH"
     assert data["direct_url"].startswith("https://example.com/jobs/123")
     assert data["remote_scope"] == "worldwide"
-    assert data["published_at"].endswith("+00:00")
+    assert data["published_at"].endswith("Z")
+    assert data["scraped_at"].endswith("Z")
 
 
 def test_seen_state_round_trip(tmp_path):
