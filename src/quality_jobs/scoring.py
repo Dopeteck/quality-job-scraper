@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from .config import Settings
+from .language import is_probably_english
 from .models import Job
 
 
@@ -51,6 +52,17 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
         job.quality_score = -100
         job.quality_reasons = ["rejected: course, unpaid, or promotional listing"]
         return job
+    if not is_probably_english(" ".join([job.title, job.description])):
+        job.quality_score = -100
+        job.quality_reasons = ["rejected: non-English listing"]
+        return job
+    if (
+        job.remote_scope != "unknown"
+        and job.remote_scope not in settings.allowed_remote_scopes
+    ):
+        job.quality_score = -100
+        job.quality_reasons = [f"rejected: outside target region ({job.remote_scope})"]
+        return job
     if job.link_status in {"404", "410", "invalid"}:
         job.quality_score = -100
         job.quality_reasons = ["rejected: broken application link"]
@@ -80,9 +92,6 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
     elif job.africa_eligible:
         score += 5
         reasons.append("Africa eligible (+5)")
-    elif job.remote_scope not in settings.allowed_remote_scopes:
-        score -= 5
-        reasons.append(f"outside target region: {job.remote_scope} (-5)")
     else:
         score += 1
         reasons.append("remote scope accepted (+1)")
@@ -112,7 +121,6 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
         score += 1
         reasons.append("application page reachable (+1)")
 
-    # Obvious scam language is an automatic rejection.
     if re.search(r"\b(?:guaranteed income|instant earnings|no work required|get rich)\b", text):
         score = -100
         reasons = ["rejected: suspicious earnings claim"]
