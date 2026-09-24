@@ -5,6 +5,7 @@ from quality_jobs.models import Job
 from quality_jobs.pipeline import process
 from quality_jobs.text import canonicalize_url
 from quality_jobs.sources import _date
+from quality_jobs.state import load_seen, save_seen
 from quality_jobs.webhook import payload
 
 
@@ -14,6 +15,7 @@ def settings(**overrides) -> Settings:
         google_worksheet="QualityJobs",
         google_service_account_json="",
         make_webhook_url="",
+        state_path="data/seen.json",
         mercor_referral_url="",
         outlier_referral_url="",
         min_quality_score=8,
@@ -151,3 +153,26 @@ def test_make_payload_matches_sheet_headers():
     assert data["title"] == "Junior AI Response Evaluator"
     assert data["processed"] is False
     assert data["telegram_post"]
+
+
+def test_seen_state_round_trip(tmp_path):
+    accepted, _ = process([job()], settings())
+    state_path = tmp_path / "seen.json"
+
+    save_seen(str(state_path), set(), set(), accepted)
+    urls, fingerprints = load_seen(str(state_path))
+
+    assert accepted[0].canonical_url in urls
+    assert accepted[0].fingerprint in fingerprints
+
+
+def test_seen_state_rejects_job_on_later_run(tmp_path):
+    accepted, _ = process([job()], settings())
+    state_path = tmp_path / "seen.json"
+    save_seen(str(state_path), set(), set(), accepted)
+    urls, fingerprints = load_seen(str(state_path))
+
+    repeated, rejected = process([job()], settings(), urls, fingerprints)
+
+    assert not repeated
+    assert rejected[0].quality_reasons == ["rejected: duplicate"]
