@@ -5,6 +5,7 @@ from quality_jobs.models import Job
 from quality_jobs.pipeline import process
 from quality_jobs.text import canonicalize_url
 from quality_jobs.sources import _date
+from quality_jobs.sources import verify_candidate_details
 from quality_jobs.state import load_seen, save_seen
 from quality_jobs.site import payload as site_payload
 from quality_jobs.webhook import payload
@@ -164,11 +165,47 @@ def test_english_job_outside_target_region_is_rejected():
     ]
 
 
+def test_brazil_restriction_overrides_worldwide_marketing_copy():
+    accepted, rejected = process(
+        [
+            job(
+                location="Remote - Brazil",
+                description=(
+                    "Work remotely from anywhere with no geographical restrictions. "
+                    "Location: Remote - Brazil. To be considered, you must reside in Brazil."
+                ),
+            )
+        ],
+        settings(allowed_remote_scopes=frozenset({"worldwide", "africa", "emea"})),
+    )
+    assert not accepted
+    assert rejected[0].quality_reasons == ["rejected: outside target region (latam)"]
+
+
+def test_cryptocurrencyjobs_detail_verifies_location(monkeypatch):
+    class Response:
+        text = """
+        <main><p>Work remotely from anywhere.</p>
+        <p><strong>Location</strong>: Remote - Brazil</p>
+        <p>To be considered, you must reside in Brazil.</p>
+        <p><strong>About the role</strong></p></main>
+        """
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr("quality_jobs.sources.requests.get", lambda *args, **kwargs: Response())
+    item = job(source="CryptocurrencyJobs", location="Remote")
+
+    assert verify_candidate_details(item, settings()) is True
+    assert item.location == "Remote - Brazil"
+
+
 def test_telegram_post_includes_editorial_value_and_engagement_prompt():
     accepted, _ = process([job()], settings())
     post = accepted[0].telegram_post
     assert "Why it stands out" in post
-    assert "Africa-friendly" in post
+    assert "Why it stands out:</b> remote-friendly" in post
     assert any(prompt in post for prompt in ("Applying?", "Want more", "Know a strong fit?"))
 
 
