@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import requests
 
 from .config import Settings
 from .models import Job
+
+
+def _isoformat(value: datetime) -> str:
+    """Return an RFC 3339 timestamp that is accepted by strict JSON APIs."""
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def payload(job: Job) -> dict[str, object]:
@@ -27,8 +34,8 @@ def payload(job: Job) -> dict[str, object]:
         "quality_reasons": "; ".join(job.quality_reasons),
         "apply_url": job.effective_url,
         "direct_url": job.direct_url,
-        "published_at": job.published_at.isoformat() if job.published_at else None,
-        "scraped_at": job.scraped_at.isoformat(),
+        "published_at": _isoformat(job.published_at) if job.published_at else None,
+        "scraped_at": _isoformat(job.scraped_at),
     }
 
 
@@ -50,4 +57,15 @@ def send_jobs(settings: Settings, jobs: list[Job]) -> None:
             timeout=settings.request_timeout_seconds,
             headers=headers,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            detail = response.text.strip()[:500]
+            message = f"site ingest rejected {job.source_job_id or job.fingerprint}: {exc}"
+            if detail:
+                message = f"{message}; response={detail}"
+            raise requests.HTTPError(
+                message,
+                response=response,
+                request=response.request,
+            ) from exc
