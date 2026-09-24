@@ -159,8 +159,37 @@ def fetch_cryptocurrencyjobs(settings: Settings) -> list[Job]:
             title, company = job.title.rsplit(" at ", 1)
             job.title = title.strip()
             job.company = company.strip()
-        job.location = job.description or "Remote"
     return jobs
+
+
+def verify_candidate_details(job: Job, settings: Settings) -> bool:
+    """Verify location claims that are missing from an RSS summary."""
+    if job.source.lower() != "cryptocurrencyjobs":
+        return True
+    try:
+        response = requests.get(
+            job.direct_url,
+            timeout=settings.request_timeout_seconds,
+            headers={"User-Agent": settings.user_agent},
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        LOGGER.warning("source_detail_failed source=%s url=%s error=%s", job.source, job.direct_url, exc)
+        return False
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    main = soup.select_one("main")
+    description = clean_text(str(main or soup), 4000)
+    location_match = re.search(
+        r"\bLocation\s*:\s*(.{1,160}?)(?=\s+(?:To be considered|Work Timezone|About the role)\b)",
+        description,
+        flags=re.IGNORECASE,
+    )
+    if not location_match:
+        return False
+    job.description = description
+    job.location = clean_text(location_match.group(1), 160)
+    return True
 
 
 def fetch_arbeitnow(settings: Settings) -> list[Job]:
