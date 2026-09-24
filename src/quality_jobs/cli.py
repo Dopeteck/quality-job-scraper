@@ -8,6 +8,7 @@ import sys
 from .config import Settings
 from .pipeline import process
 from .sheets import append_jobs, existing_keys, worksheet
+from .site import send_jobs as send_site_jobs
 from .sources import SOURCE_FETCHERS, collect
 from .state import load_seen, save_seen
 from .webhook import send_jobs
@@ -85,6 +86,7 @@ def main() -> int:
         append_jobs(ws, accepted_jobs)
         print(f"Added {len(accepted_jobs)} rows to {settings.google_worksheet}")
     elif not args.dry_run and settings.make_webhook_url:
+        send_site_jobs(settings, accepted_jobs)
         send_jobs(settings, accepted_jobs)
         save_seen(
             settings.state_path,
