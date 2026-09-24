@@ -8,6 +8,11 @@ on:
         required: false
         default: true
         type: boolean
+      max_per_run:
+        description: "Maximum accepted jobs for this manual run"
+        required: false
+        default: "1"
+        type: string
   schedule:
     # 07:15 West Africa Time (UTC+1), every day.
     - cron: "15 6 * * *"
@@ -36,14 +41,16 @@ jobs:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
           GOOGLE_WORKSHEET: QualityJobs
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           MERCOR_REFERRAL_URL: ${{ secrets.MERCOR_REFERRAL_URL || 'https://t.mercor.com/H06sH' }}
           OUTLIER_REFERRAL_URL: ${{ secrets.OUTLIER_REFERRAL_URL }}
+          MAX_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_per_run || '5' }}
           USER_AGENT: Web3TechJobsHub/1.0
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             quality-jobs --dry-run
-          elif [ -z "$GOOGLE_SHEET_ID" ] || [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::notice::Google Sheets credentials are not configured; running a safe preview instead."
+          elif [ -z "$MAKE_WEBHOOK_URL" ] && { [ -z "$GOOGLE_SHEET_ID" ] || [ -z "$GOOGLE_SERVICE_ACCOUNT_JSON" ]; }; then
+            echo "::notice::No Make webhook or Google Sheets credentials are configured; running a safe preview instead."
             quality-jobs --dry-run
           else
             quality-jobs
