@@ -18,6 +18,7 @@ class Settings:
     google_worksheet: str
     google_service_account_json: str
     make_webhook_url: str
+    state_path: str
     mercor_referral_url: str
     outlier_referral_url: str
     min_quality_score: int
@@ -48,6 +49,7 @@ class Settings:
             google_worksheet=os.getenv("GOOGLE_WORKSHEET", "QualityJobs").strip(),
             google_service_account_json=os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip(),
             make_webhook_url=os.getenv("MAKE_WEBHOOK_URL", "").strip(),
+            state_path=os.getenv("STATE_PATH", "data/seen.json").strip(),
             mercor_referral_url=os.getenv("MERCOR_REFERRAL_URL", "").strip(),
             outlier_referral_url=os.getenv("OUTLIER_REFERRAL_URL", "").strip(),
             min_quality_score=int(os.getenv("MIN_QUALITY_SCORE", "8")),
