@@ -51,7 +51,7 @@ jobs:
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
           MERCOR_REFERRAL_URL: ${{ secrets.MERCOR_REFERRAL_URL || 'https://t.mercor.com/H06sH' }}
           OUTLIER_REFERRAL_URL: ${{ secrets.OUTLIER_REFERRAL_URL }}
-          MAX_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_per_run || '5' }}
+          MAX_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_per_run || '3' }}
           STATE_PATH: data/seen.json
           USER_AGENT: Web3TechJobsHub/1.0
         run: |
