@@ -9,6 +9,7 @@ from .config import Settings
 from .pipeline import process
 from .sheets import append_jobs, existing_keys, worksheet
 from .sources import SOURCE_FETCHERS, collect
+from .state import load_seen, save_seen
 from .webhook import send_jobs
 
 
@@ -46,6 +47,8 @@ def main() -> int:
         if not settings.make_webhook_url:
             ws = worksheet(settings)
             existing_urls, existing_fingerprints = existing_keys(ws)
+        else:
+            existing_urls, existing_fingerprints = load_seen(settings.state_path)
 
     raw_jobs = collect(settings, set(args.source or []))
     accepted_jobs, rejected_jobs = process(
@@ -83,6 +86,12 @@ def main() -> int:
         print(f"Added {len(accepted_jobs)} rows to {settings.google_worksheet}")
     elif not args.dry_run and settings.make_webhook_url:
         send_jobs(settings, accepted_jobs)
+        save_seen(
+            settings.state_path,
+            existing_urls,
+            existing_fingerprints,
+            accepted_jobs,
+        )
         print(f"Sent {len(accepted_jobs)} rows to Make")
     return 0
 
