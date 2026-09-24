@@ -129,6 +129,48 @@ def test_unknown_location_is_rejected_when_strict():
     assert len(rejected) == 1
 
 
+def test_arabic_listing_is_rejected():
+    accepted, rejected = process(
+        [
+            job(
+                title="مشروع تسجيل صوتي للعمل عن بعد",
+                description=(
+                    "نبحث عن متحدثين باللغة العربية لتسجيل عبارات قصيرة "
+                    "باستخدام الهاتف من المنزل مقابل أجر بعد مراجعة الجودة."
+                ),
+                location="UAE",
+            )
+        ],
+        settings(allowed_remote_scopes=frozenset({"worldwide", "africa", "emea"})),
+    )
+    assert not accepted
+    assert rejected[0].quality_reasons == ["rejected: non-English listing"]
+
+
+def test_english_job_outside_target_region_is_rejected():
+    accepted, rejected = process(
+        [
+            job(
+                location="United States only",
+                description="Remote AI evaluation role for candidates based in the United States.",
+            )
+        ],
+        settings(allowed_remote_scopes=frozenset({"worldwide", "africa", "emea"})),
+    )
+    assert not accepted
+    assert rejected[0].quality_reasons == [
+        "rejected: outside target region (us_canada)"
+    ]
+
+
+def test_telegram_post_includes_editorial_value_and_engagement_prompt():
+    accepted, _ = process([job()], settings())
+    post = accepted[0].telegram_post
+    assert "Why it stands out" in post
+    assert "Africa-friendly" in post
+    assert any(prompt in post for prompt in ("Applying?", "Want more", "Know a strong fit?"))
+
+
 def test_referral_share_is_capped():
     items = []
     for index in range(10):
