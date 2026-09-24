@@ -33,6 +33,8 @@ class Settings:
     request_timeout_seconds: int
     allowed_remote_scopes: frozenset[str]
     user_agent: str
+    site_ingest_url: str = ""
+    site_ingest_token: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -54,7 +56,7 @@ class Settings:
             outlier_referral_url=os.getenv("OUTLIER_REFERRAL_URL", "").strip(),
             min_quality_score=int(os.getenv("MIN_QUALITY_SCORE", "8")),
             max_job_age_days=int(os.getenv("MAX_JOB_AGE_DAYS", "10")),
-            max_per_run=int(os.getenv("MAX_PER_RUN", "5")),
+            max_per_run=int(os.getenv("MAX_PER_RUN", "3")),
             max_per_source=int(os.getenv("MAX_PER_SOURCE", "2")),
             max_referral_share=float(os.getenv("MAX_REFERRAL_SHARE", "0.20")),
             entry_priority_share=float(os.getenv("ENTRY_PRIORITY_SHARE", "0.40")),
@@ -64,6 +66,8 @@ class Settings:
             request_timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "10")),
             allowed_remote_scopes=scopes,
             user_agent=os.getenv("USER_AGENT", "Web3TechJobsHub/1.0").strip(),
+            site_ingest_url=os.getenv("SITE_INGEST_URL", "").strip(),
+            site_ingest_token=os.getenv("SITE_INGEST_TOKEN", "").strip(),
         )
 
     def service_account_info(self) -> dict:
