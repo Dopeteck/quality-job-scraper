@@ -73,6 +73,19 @@ def build_telegram_post(job: Job) -> str:
     if job.salary:
         lines.append(f"💵 {safe_html(job.salary)}")
     lines.append(f"🗓 {_age_label(job)}")
+    strengths: list[str] = []
+    if job.africa_eligible:
+        strengths.append("Africa-friendly")
+    if job.experience_level == "entry":
+        strengths.append("entry-friendly")
+    if job.category == "ai":
+        strengths.append("AI work")
+    if job.salary:
+        strengths.append("pay disclosed")
+    if strengths:
+        lines.append(
+            f"✅ <b>Why it stands out:</b> {safe_html(' • '.join(strengths[:3]))}"
+        )
     if job.description:
         lines.extend(["", safe_html(shorten(job.description, 280))])
     lines.extend(["", f"🔗 <a href=\"{safe_html(job.effective_url)}\"><b>Apply here</b></a>"])
@@ -85,10 +98,16 @@ def build_telegram_post(job: Job) -> str:
             lines.append(
                 f"<a href=\"{safe_html(job.direct_url)}\">View the original listing</a>"
             )
+    prompts = [
+        "🔥 Applying? React after you submit—and forward this to one job seeker.",
+        "🌍 Want more Africa-friendly roles? React and share this with your network.",
+        "📤 Know a strong fit? Forward this before the application window closes.",
+    ]
+    prompt_index = int((job.fingerprint or "0")[:2], 16) % len(prompts)
     lines.extend(
         [
             "",
-            "↗️ Forward this to someone looking for work.",
+            prompts[prompt_index],
             " ".join(HASHTAGS.get(job.category, HASHTAGS["tech"])),
         ]
     )
