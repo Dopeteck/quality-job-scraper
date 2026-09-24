@@ -51,7 +51,11 @@ def enrich(job: Job, settings: Settings) -> Job:
 def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
     selected: list[Job] = []
     source_counts: Counter[str] = Counter()
-    referral_limit = math.floor(settings.max_per_run * settings.max_referral_share)
+    referral_limit = (
+        max(1, math.floor(settings.max_per_run * settings.max_referral_share))
+        if settings.max_referral_share > 0
+        else 0
+    )
     referral_count = 0
     ranked = sorted(jobs, key=lambda item: item.quality_score, reverse=True)
 
