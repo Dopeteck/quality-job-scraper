@@ -43,6 +43,8 @@ jobs:
             quality-jobs-seen-
       - name: Install
         run: pip install .
+      - name: Test curation and formatter
+        run: pip install pytest==8.4.1 && pytest -q
       - name: Collect, score and publish
         env:
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
@@ -53,9 +55,9 @@ jobs:
           SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}
           MERCOR_REFERRAL_URL: ${{ secrets.MERCOR_REFERRAL_URL || 'https://t.mercor.com/H06sH' }}
           OUTLIER_REFERRAL_URL: ${{ secrets.OUTLIER_REFERRAL_URL }}
-          MAX_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_per_run || '3' }}
+          MAX_PER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.max_per_run || '2' }}
           STATE_PATH: data/seen.json
-          USER_AGENT: Web3TechJobsHub/1.0
+          USER_AGENT: RemoteJobsWorldwide/1.0
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             quality-jobs --dry-run
@@ -71,3 +73,4 @@ jobs:
         with:
           path: data/seen.json
           key: quality-jobs-seen-${{ github.run_id }}
+

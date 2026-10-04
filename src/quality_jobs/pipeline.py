@@ -121,14 +121,20 @@ def process(
         )
         candidates: list[Job] = []
         candidate_source_counts: Counter[str] = Counter()
+        candidate_urls: set[str] = set()
+        candidate_fingerprints: set[str] = set()
         for job in priority_pool:
             if len(candidates) >= settings.max_per_run * 2:
                 break
-            if job in candidates:
+            if (job.canonical_url in seen_urls or job.fingerprint in seen_fingerprints
+                    or job.canonical_url in candidate_urls
+                    or job.fingerprint in candidate_fingerprints):
                 continue
             if candidate_source_counts[job.source] >= settings.max_per_source * 2:
                 continue
             candidates.append(job)
+            candidate_urls.add(job.canonical_url)
+            candidate_fingerprints.add(job.fingerprint)
             candidate_source_counts[job.source] += 1
         workers = min(12, len(candidates))
         if workers:
@@ -168,3 +174,4 @@ def process(
     rejected_jobs.extend(overflow)
     LOGGER.info("accepted=%d rejected_or_held=%d", len(selected), len(rejected_jobs))
     return selected, rejected_jobs
+

@@ -42,7 +42,7 @@ class Settings:
             part.strip().lower()
             for part in os.getenv(
                 "ALLOWED_REMOTE_SCOPES",
-                "worldwide,africa,emea",
+                "worldwide,africa,emea,europe,eu,uk,us,canada,us_canada,us_ca_uk_eu,latam,asia,middle_east,oceania",
             ).split(",")
             if part.strip()
         )
@@ -54,10 +54,10 @@ class Settings:
             state_path=os.getenv("STATE_PATH", "data/seen.json").strip(),
             mercor_referral_url=os.getenv("MERCOR_REFERRAL_URL", "").strip(),
             outlier_referral_url=os.getenv("OUTLIER_REFERRAL_URL", "").strip(),
-            min_quality_score=int(os.getenv("MIN_QUALITY_SCORE", "8")),
-            max_job_age_days=int(os.getenv("MAX_JOB_AGE_DAYS", "10")),
-            max_per_run=int(os.getenv("MAX_PER_RUN", "3")),
-            max_per_source=int(os.getenv("MAX_PER_SOURCE", "2")),
+            min_quality_score=int(os.getenv("MIN_QUALITY_SCORE", "9")),
+            max_job_age_days=int(os.getenv("MAX_JOB_AGE_DAYS", "7")),
+            max_per_run=int(os.getenv("MAX_PER_RUN", "2")),
+            max_per_source=int(os.getenv("MAX_PER_SOURCE", "1")),
             max_referral_share=float(os.getenv("MAX_REFERRAL_SHARE", "0.20")),
             entry_priority_share=float(os.getenv("ENTRY_PRIORITY_SHARE", "0.40")),
             ai_priority_share=float(os.getenv("AI_PRIORITY_SHARE", "0.40")),
@@ -65,7 +65,7 @@ class Settings:
             require_known_location=_bool("REQUIRE_KNOWN_LOCATION", True),
             request_timeout_seconds=int(os.getenv("REQUEST_TIMEOUT_SECONDS", "10")),
             allowed_remote_scopes=scopes,
-            user_agent=os.getenv("USER_AGENT", "Web3TechJobsHub/1.0").strip(),
+            user_agent=os.getenv("USER_AGENT", "RemoteJobsWorldwide/1.0").strip(),
             site_ingest_url=os.getenv("SITE_INGEST_URL", "").strip(),
             site_ingest_token=os.getenv("SITE_INGEST_TOKEN", "").strip(),
         )
@@ -77,3 +77,4 @@ class Settings:
             return json.loads(self.google_service_account_json)
         except json.JSONDecodeError as exc:
             raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON") from exc
+

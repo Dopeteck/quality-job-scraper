@@ -109,27 +109,55 @@ def _contains(text: str, terms: set[str]) -> bool:
     return any(term in text for term in terms)
 
 
+def _region_scope(text: str) -> str | None:
+    # Geography comes from the location field / explicit eligibility sentences,
+    # not mentions of customers or offices elsewhere in the company description.
+    def has(pattern: str) -> bool:
+        return bool(re.search(pattern, text, re.I))
+
+    us = has(r"\b(united states|usa|u\.s\.|us)\b|en-us|vi-us")
+    canada = has(r"\bcanada\b")
+    uk = has(r"\b(uk|united kingdom)\b")
+    eu = has(r"\b(eu|european union)\b")
+    if us and canada and uk and eu:
+        return "us_ca_uk_eu"
+    if us and canada and not uk and not eu:
+        return "us_canada"
+    if (us or canada) and has(r"\b(europe|africa|asia|apac|latam|brazil|india|australia|emea|mena)\b"):
+        return None  # Mixed regions need clearer eligibility; never label US-only.
+    if sum([us, canada, uk, eu]) == 1:
+        return "us" if us else "canada" if canada else "uk" if uk else "eu"
+    if uk and eu and not us and not canada:
+        return "europe"
+    if has(r"\bemea\b"):
+        return "emea"
+    groups = [
+        ("africa", AFRICA_TERMS - {"emea"}),
+        ("latam", LATAM_TERMS), ("europe", EUROPE_TERMS - {"emea"}),
+        ("asia", ASIA_TERMS), ("middle_east", MIDDLE_EAST_TERMS),
+        ("oceania", {"australia", "new zealand", "oceania"}),
+    ]
+    matches = [scope for scope, terms in groups if any(
+        re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.I)
+        for term in terms
+    )]
+    if len(matches) == 1 and not (us or canada or uk or eu):
+        return matches[0]
+    if has(r"\bnorth america\b") and not matches:
+        return "us_canada"
+    return None
+
+
 def _explicitly_restricted_scope(text: str) -> str | None:
-    """Return a regional scope only when the listing states an applicant restriction."""
     snippets = re.findall(
         r"(?:location\s*:|must\s+reside|must\s+be\s+based|"
         r"candidates?\s+(?:must\s+be|based|located)|"
-        r"open\s+(?:only\s+)?to|remote\s+from).{0,180}",
-        text,
+        r"open\s+(?:only\s+)?to|remote\s+from)[^.;\n]{0,180}", text,
     )
     for snippet in snippets:
-        if _contains(snippet, LATAM_TERMS):
-            return "latam"
-        if _contains(snippet, US_TERMS):
-            return "us_canada"
-        if _contains(snippet, ASIA_TERMS):
-            return "asia"
-        if _contains(snippet, MIDDLE_EAST_TERMS):
-            return "middle_east"
-        if _contains(snippet, EUROPE_TERMS):
-            return "emea" if "emea" in snippet else "europe"
-        if _contains(snippet, AFRICA_TERMS):
-            return "africa"
+        scope = _region_scope(snippet)
+        if scope:
+            return scope
     return None
 
 
@@ -157,31 +185,20 @@ def classify(job: Job) -> Job:
     else:
         job.experience_level = "not_specified"
 
+    location = job.location.lower().strip()
     restricted_scope = _explicitly_restricted_scope(text)
+    location_scope = _region_scope(location)
     if restricted_scope:
         job.remote_scope = restricted_scope
-    elif _contains(text, WORLDWIDE_TERMS):
+    elif location_scope:
+        job.remote_scope = location_scope
+    elif _contains(location, WORLDWIDE_TERMS):
         job.remote_scope = "worldwide"
-    elif _contains(text, AFRICA_TERMS):
-        job.remote_scope = "africa"
-        job.africa_eligible = True
-    elif _contains(text, LATAM_TERMS):
-        job.remote_scope = "latam"
-    elif "emea" in text:
-        job.remote_scope = "emea"
-    elif _contains(text, EUROPE_TERMS):
-        job.remote_scope = "europe"
-    elif _contains(text, US_TERMS):
-        job.remote_scope = "us_canada"
-    elif _contains(text, ASIA_TERMS):
-        job.remote_scope = "asia"
-    elif _contains(text, MIDDLE_EAST_TERMS):
-        job.remote_scope = "middle_east"
+    elif location in {"", "remote"} and _contains(job.description.lower(), WORLDWIDE_TERMS):
+        job.remote_scope = "worldwide"
     else:
         job.remote_scope = "unknown"
-
-    if job.remote_scope == "worldwide":
-        job.africa_eligible = True
+    job.africa_eligible = job.remote_scope in {"worldwide", "africa", "emea"}
 
     # Mercor's published policy says unspecified listings default to US/CA/UK/EU.
     if job.source.lower() == "mercor" and job.remote_scope == "unknown":
@@ -195,3 +212,4 @@ def classify(job: Job) -> Job:
         keywords.append("Africa friendly")
     job.search_keywords = ", ".join(dict.fromkeys(x for x in keywords if x))
     return job
+
