@@ -300,8 +300,13 @@ def fetch_mercor(settings: Settings) -> list[Job]:
     import json
 
     state = json.loads(state_script.string)
-    queries = state["props"]["pageProps"]["dehydratedState"]["queries"]
-    listings = queries[0]["state"]["data"]["listings"]
+    queries = state.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries", [])
+    listings = next((query.get("state", {}).get("data", {}).get("listings")
+                     for query in queries
+                     if isinstance(query.get("state", {}).get("data"), dict)
+                     and isinstance(query["state"]["data"].get("listings"), list)), None)
+    if listings is None:
+        raise ValueError("Mercor public listings format was not recognized")
     country_names = {
         "NGA": "Nigeria",
         "GHA": "Ghana",
@@ -389,3 +394,4 @@ def collect(settings: Settings, selected: set[str] | None = None) -> list[Job]:
         except (requests.RequestException, ValueError, TypeError) as exc:
             LOGGER.warning("source=%s failed=%s", name, exc)
     return jobs
+

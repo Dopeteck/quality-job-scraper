@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
+from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .classify import classify
@@ -93,8 +94,8 @@ def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
 
     entry_target = math.ceil(settings.max_per_run * settings.entry_priority_share)
     ai_target = math.ceil(settings.max_per_run * settings.ai_priority_share)
-    add_from([job for job in ranked if job.experience_level == "entry"], entry_target)
     add_from([job for job in ranked if job.category == "ai"], ai_target)
+    add_from([job for job in ranked if job.experience_level == "entry"], entry_target)
     add_from(ranked, settings.max_per_run)
     return sorted(selected, key=lambda item: item.quality_score, reverse=True)
 
@@ -114,11 +115,14 @@ def process(
             key=lambda item: item.quality_score,
             reverse=True,
         )
-        priority_pool = (
-            [job for job in candidate_pool if job.experience_level == "entry"]
-            + [job for job in candidate_pool if job.category == "ai"]
-            + candidate_pool
-        )
+        # Alternate AI and entry candidates so neither fills the verification
+        # budget before the other gets checked. Keep quality ordering in each.
+        ai_pool = [job for job in candidate_pool if job.category == "ai"]
+        entry_pool = [job for job in candidate_pool if job.experience_level == "entry"]
+        priority_pool = [
+            job for pair in zip_longest(ai_pool, entry_pool)
+            for job in pair if job is not None
+        ] + candidate_pool
         candidates: list[Job] = []
         candidate_source_counts: Counter[str] = Counter()
         candidate_urls: set[str] = set()

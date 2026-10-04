@@ -6,6 +6,12 @@ from .models import Job
 
 
 AI_TERMS = {
+    "ai engineer",
+    "ai researcher",
+    "ai safety",
+    "model evaluation",
+    "multimodal",
+    "llm",
     "ai trainer",
     "ai training",
     "ai evaluator",

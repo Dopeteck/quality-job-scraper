@@ -364,3 +364,26 @@ def test_mixed_regions_are_not_mislabeled_us_only():
     accepted, rejected = process([job(location="US and Europe",
         description="Remote support role. Handle customer requests.")], settings())
     assert not accepted and rejected[0].remote_scope == "unknown"
+
+
+def test_ai_candidate_gets_verified_amid_many_entry_roles(monkeypatch):
+    checked = []
+    monkeypatch.setattr("quality_jobs.pipeline._verify_and_check",
+                        lambda item, config: checked.append(item.title) or "200")
+    entries = [job(title=f"Junior Support Agent {i}", source=f"Source {i}",
+                   description="Help customers resolve requests. Remote worldwide.",
+                   direct_url=f"https://example.com/entry/{i}") for i in range(8)]
+    ai = job(title="Senior AI Safety Researcher", source="Mercor",
+             description="Evaluate artificial intelligence models. Remote worldwide.",
+             direct_url="https://work.mercor.com/jobs/research", referral_url="https://t.mercor.com/H06sH")
+    selected, _ = process(entries + [ai], settings(max_per_run=2, max_per_source=1,
+                          ai_priority_share=.4, entry_priority_share=.4, link_check_enabled=True))
+    assert ai.title in checked
+    assert ai in selected
+    assert ai.effective_url == "https://t.mercor.com/H06sH"
+
+
+def test_current_mercor_ai_titles_are_classified():
+    from quality_jobs.classify import classify
+    for title in ["Multimodal Image Expert", "AI Safety and Model Evaluation", "AI Engineer", "LLM Researcher"]:
+        assert classify(job(title=title, description="Evaluate outputs.")).category == "ai"
