@@ -89,9 +89,6 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
     if job.remote_scope == "worldwide":
         score += 4
         reasons.append("worldwide (+4)")
-    elif job.africa_eligible:
-        score += 5
-        reasons.append("Africa eligible (+5)")
     else:
         score += 1
         reasons.append("remote scope accepted (+1)")
@@ -136,3 +133,4 @@ def accepted(job: Job, settings: Settings) -> bool:
     if settings.link_check_enabled and job.link_status == "unchecked":
         return False
     return job.quality_score >= settings.min_quality_score
+

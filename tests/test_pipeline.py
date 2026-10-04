@@ -120,7 +120,7 @@ def test_mercor_unspecified_location_is_not_treated_as_worldwide():
     assert not rejected
     assert accepted[0].remote_scope == "us_ca_uk_eu"
     assert accepted[0].africa_eligible is False
-    assert "Referral disclosure" in accepted[0].telegram_post
+    assert "Referral:" in accepted[0].telegram_post
 
 
 def test_unknown_location_is_rejected_when_strict():
@@ -161,7 +161,7 @@ def test_english_job_outside_target_region_is_rejected():
     )
     assert not accepted
     assert rejected[0].quality_reasons == [
-        "rejected: outside target region (us_canada)"
+        "rejected: outside target region (us)"
     ]
 
 
@@ -201,12 +201,15 @@ def test_cryptocurrencyjobs_detail_verifies_location(monkeypatch):
     assert item.location == "Remote - Brazil"
 
 
-def test_telegram_post_includes_editorial_value_and_engagement_prompt():
+def test_telegram_post_is_short_useful_and_filterable():
     accepted, _ = process([job()], settings())
     post = accepted[0].telegram_post
     assert "Why it stands out" in post
-    assert "Why it stands out:</b> remote-friendly" in post
-    assert any(prompt in post for prompt in ("Applying?", "Want more", "Know a strong fit?"))
+    assert "pay disclosed" in post
+    assert "Save this to Saved Messages" in post
+    assert "#Worldwide" in post and "#AfricaEligible" in post
+    assert "React" not in post and "Evaluate artificial intelligence responses" not in post
+    assert len(post) < 800
 
 
 def test_referral_share_is_capped():
@@ -286,3 +289,78 @@ def test_seen_state_rejects_job_on_later_run(tmp_path):
 
     assert not repeated
     assert rejected[0].quality_reasons == ["rejected: duplicate"]
+
+
+
+def test_global_defaults_are_curated():
+    config = Settings.from_env()
+    assert {"worldwide", "us", "eu", "latam", "asia"} <= config.allowed_remote_scopes
+    assert config.max_per_run == 2 and config.max_per_source == 1
+    assert config.max_job_age_days == 7 and config.min_quality_score == 9
+
+
+def test_location_restrictions_override_company_global_copy():
+    for location, scope, tag in [
+        ("United States only", "us", "#USOnly"),
+        ("EU only", "eu", "#EUOnly"),
+        ("Canada", "canada", "#CanadaOnly"),
+        ("Remote - Brazil", "latam", "#LATAM"),
+        ("EMEA", "emea", "#EMEA"),
+    ]:
+        item = job(title="Customer Support Specialist", location=location,
+                   description="Our company serves customers worldwide. Help customers resolve requests.")
+        accepted, _ = process([item], settings(allowed_remote_scopes=frozenset({scope})))
+        assert len(accepted) == 1
+        post = accepted[0].telegram_post
+        assert "#Support" in post and tag in post
+        assert "#Worldwide" not in post
+        assert location in post
+        assert accepted[0].africa_eligible is (scope == "emea")
+
+
+def test_role_tags_follow_title_not_company_description():
+    for title, tag in [("Software Developer", "#Developer"),
+                       ("Marketing Manager", "#Marketing"),
+                       ("Product Designer", "#Design")]:
+        accepted, _ = process([job(title=title)], settings())
+        assert tag in accepted[0].telegram_post
+
+
+def test_global_batch_limit_and_source_diversity():
+    items = [job(title=f"AI Evaluator {i}", source=source,
+                 direct_url=f"https://example.com/jobs/{i}")
+             for i, source in enumerate(["Remotive", "Remotive", "RemoteOK"])]
+    selected, _ = process(items, settings(max_per_run=2, max_per_source=1))
+    assert len(selected) == 2
+    assert len({item.source for item in selected}) == 2
+
+
+def test_cross_source_duplicate_does_not_consume_link_check_pool(monkeypatch):
+    checked = []
+    def verify(item, config):
+        checked.append(item.direct_url)
+        return "200"
+    monkeypatch.setattr("quality_jobs.pipeline._verify_and_check", verify)
+    first = job(direct_url="https://a.example/job/1")
+    duplicate = job(source="RemoteOK", direct_url="https://b.example/job/1")
+    unique = job(title="Junior Data Annotator", direct_url="https://c.example/job/2")
+    selected, _ = process([first, duplicate, unique], settings(link_check_enabled=True))
+    assert len(checked) == 2 and len(selected) == 2
+
+
+def test_previous_run_duplicates_do_not_consume_link_check_pool(monkeypatch):
+    checked = []
+    monkeypatch.setattr("quality_jobs.pipeline._verify_and_check",
+                        lambda item, config: checked.append(item.title) or "200")
+    first, _ = process([job()], settings())
+    repeated = job()
+    unique = job(title="Junior Data Annotator", direct_url="https://example.com/jobs/2")
+    selected, _ = process([repeated, unique], settings(link_check_enabled=True),
+                          {first[0].canonical_url}, {first[0].fingerprint})
+    assert checked == [unique.title] and len(selected) == 1
+
+
+def test_mixed_regions_are_not_mislabeled_us_only():
+    accepted, rejected = process([job(location="US and Europe",
+        description="Remote support role. Handle customer requests.")], settings())
+    assert not accepted and rejected[0].remote_scope == "unknown"

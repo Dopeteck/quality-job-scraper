@@ -11,7 +11,7 @@ Google Sheets writing remains available as a fallback.
 
 ## What it fixes
 
-- rejects jobs older than the configured maximum (10 days by default)
+- rejects jobs older than the configured maximum (7 days by default)
 - rejects definite dead links (`404` and `410`)
 - strips tracking parameters and deduplicates by URL and title/company fingerprint
 - blocks courses, bootcamps, unpaid roles and obvious promotional listings
@@ -117,7 +117,7 @@ supplied.
 5. Run it once with `dry_run` disabled. Confirm rows appear in `QualityJobs`.
 
 The scheduled workflow runs once daily at 07:15 West Africa Time and adds no more than
-five jobs. GitHub may delay scheduled jobs slightly during busy periods.
+two jobs. GitHub may delay scheduled jobs slightly during busy periods.
 
 ## Make change
 
@@ -126,12 +126,12 @@ Clone the working Make scenario before editing it.
 1. Change the Google Sheets module's worksheet from `RawJobs` to `QualityJobs`.
 2. Keep its filter as `processed = FALSE`.
 3. In the Telegram module, map the `telegram_post` column as the message body.
-4. Set parse mode to **HTML** and disable link previews if desired.
+4. Set parse mode to **HTML** and disable link previews.
 5. Keep the final Google Sheets update module, but ensure it updates the originating row
    and writes `TRUE` to `processed`.
 6. Test with one row before enabling scheduling.
 
-Suggested publishing cadence is three to five posts daily. Make should choose the highest
+The scraper supplies at most two new jobs daily (one per source); empty slots stay empty. Make should choose the highest
 `quality_score` first and avoid dumping several posts at once.
 
 ## Safe operating notes
@@ -143,3 +143,34 @@ Suggested publishing cadence is three to five posts daily. Make should choose th
 - No opportunity requiring payment from an applicant should be published.
 - “Entry level” means lower stated requirements, never guaranteed acceptance.
 - Keep referral disclosure visible in every monetized post.
+
+
+
+## Global curation update
+
+Channel title: **Remote Jobs Worldwide | Tech, Web3 & More**.
+Description: Curated remote jobs in tech, Web3, AI, support, marketing and design.
+Worldwide and region-restricted opportunities, with pay and eligibility shown when
+available. Search role and region hashtags to find relevant listings.
+
+The global brand does not imply worldwide eligibility for every listing. Original
+location details remain visible; #USOnly and #EUOnly are reserved for explicit scopes.
+#AfricaEligible remains a filter tag, not the leading brand. Unknown eligibility is held.
+Hashtags support browsing/search; no personalized role-alert bot is connected.
+
+Defaults: maximum 2 jobs daily, maximum 1 per source, score at least 9, age at most
+7 days. No weaker jobs are added to fill a quota. Cross-source and previous-run
+URL/title-company duplicates are excluded before spending the link-check budget.
+The 26-column Sheets payload stays unchanged, including the Apply here anchor needed
+by Make's existing validity filter.
+
+Posts show title, employer, pay (or Pay not disclosed), location, one factual reason
+to apply, application link, Save this to Saved Messages, and role/region tags.
+Company-description paragraphs and reaction/share prompts are removed. Referral
+posts retain disclosure and the original listing link.
+
+Remaining live Make checks: Telegram parse mode HTML, Disable link preview Yes,
+Search Rows limit 1, sort quality_score descending if supported, then mark the
+originating row processed only after a successful send. Before switching format,
+review old pending rows so stale long posts do not continue to drain from the queue.
+Update the Telegram channel title/description using the owner's admin access.
