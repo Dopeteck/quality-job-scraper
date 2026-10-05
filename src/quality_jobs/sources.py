@@ -300,11 +300,21 @@ def fetch_mercor(settings: Settings) -> list[Job]:
     import json
 
     state = json.loads(state_script.string)
-    queries = state.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries", [])
-    listings = next((query.get("state", {}).get("data", {}).get("listings")
-                     for query in queries
-                     if isinstance(query.get("state", {}).get("data"), dict)
-                     and isinstance(query["state"]["data"].get("listings"), list)), None)
+    # Mercor can return a null dehydratedState instead of listing data.
+    # Treat this as an unavailable source, not a fatal collection error.
+    def as_dict(value):
+        return value if isinstance(value, dict) else {}
+
+    page_props = as_dict(as_dict(as_dict(state).get("props")).get("pageProps"))
+    queries = as_dict(page_props.get("dehydratedState")).get("queries")
+    if not isinstance(queries, list):
+        raise ValueError("Mercor public listings data is temporarily unavailable")
+    listings = None
+    for query in queries:
+        data = as_dict(as_dict(as_dict(query).get("state")).get("data"))
+        if isinstance(data.get("listings"), list):
+            listings = data["listings"]
+            break
     if listings is None:
         raise ValueError("Mercor public listings format was not recognized")
     country_names = {
@@ -325,6 +335,8 @@ def fetch_mercor(settings: Settings) -> list[Job]:
     }
     jobs = []
     for item in listings:
+        if not isinstance(item, dict):
+            continue
         listing_id = item.get("listingId")
         if (
             not listing_id
@@ -391,7 +403,8 @@ def collect(settings: Settings, selected: set[str] | None = None) -> list[Job]:
             fetched = fetcher(settings)
             LOGGER.info("source=%s fetched=%d", name, len(fetched))
             jobs.extend(fetched)
-        except (requests.RequestException, ValueError, TypeError) as exc:
+        except (requests.RequestException, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
             LOGGER.warning("source=%s failed=%s", name, exc)
     return jobs
+
 
