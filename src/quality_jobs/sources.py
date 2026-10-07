@@ -60,7 +60,7 @@ def fetch_remotive(settings: Settings) -> list[Job]:
                 location=clean_text(item.get("candidate_required_location"), 160),
                 direct_url=str(item.get("url", "")),
                 published_at=_date(item.get("publication_date")),
-                description=clean_text(item.get("description"), 1200),
+                description=clean_text(item.get("description"), 8000),
                 salary=clean_text(item.get("salary"), 100),
                 employment_type=clean_text(item.get("job_type"), 80),
             )
@@ -92,7 +92,7 @@ def fetch_remoteok(settings: Settings) -> list[Job]:
                 location=clean_text(item.get("location"), 160) or "Remote",
                 direct_url=str(item.get("url", "")),
                 published_at=_date(item.get("date") or item.get("epoch")),
-                description=clean_text(item.get("description"), 1200),
+                description=clean_text(item.get("description"), 8000),
                 salary=salary,
                 employment_type="Remote",
             )
@@ -128,7 +128,7 @@ def _rss(settings: Settings, source: str, url: str) -> list[Job]:
                 published_at=_date(item.get("published") or item.get("updated")),
                 description=clean_text(
                     item.get("summary") or item.get("description") or item.get("content"),
-                    1200,
+                    8000,
                 ),
             )
         )
@@ -179,7 +179,7 @@ def verify_candidate_details(job: Job, settings: Settings) -> bool:
 
     soup = BeautifulSoup(response.text, "html.parser")
     main = soup.select_one("main")
-    description = clean_text(str(main or soup), 4000)
+    description = clean_text(str(main or soup), 8000)
     location_match = re.search(
         r"\bLocation\s*:\s*(.{1,160}?)(?=\s+(?:To be considered|Work Timezone|About the role)\b)",
         description,
@@ -213,7 +213,7 @@ def fetch_arbeitnow(settings: Settings) -> list[Job]:
                 location=clean_text(item.get("location"), 160) or tags or "Remote",
                 direct_url=str(item.get("url", "")),
                 published_at=_date(item.get("created_at")),
-                description=clean_text(item.get("description"), 1200),
+                description=clean_text(item.get("description"), 8000),
                 employment_type=", ".join(
                     str(kind) for kind in item.get("job_types", [])
                 ),
@@ -253,7 +253,7 @@ def fetch_crowdgen(settings: Settings) -> list[Job]:
             term in lowered for term in ("referral", "popup", "template")
         ):
             continue
-        description = clean_text(item.get("content", {}).get("rendered"), 1200)
+        description = clean_text(item.get("content", {}).get("rendered"), 8000)
         salary_match = re.search(
             r"\$\s?\d+(?:\.\d+)?(?:\s?[-–]\s?\$?\d+(?:\.\d+)?)?"
             r"\s*(?:per|/)\s*(?:hour|task|project)",
@@ -369,7 +369,7 @@ def fetch_mercor(settings: Settings) -> list[Job]:
                 location=location,
                 direct_url=f"https://work.mercor.com/jobs/{listing_id}",
                 published_at=_date(item.get("postedAt") or item.get("createdAt")),
-                description=clean_text(item.get("description"), 1200),
+                description=clean_text(item.get("description"), 8000),
                 salary=salary,
                 employment_type=clean_text(item.get("commitment"), 80),
                 referral_url=settings.mercor_referral_url,
@@ -383,7 +383,78 @@ def fetch_mercor(settings: Settings) -> list[Job]:
     return jobs
 
 
+def _lever(settings: Settings, board: str, company: str) -> list[Job]:
+    """Read direct remote vacancies, preserving dates and eligibility."""
+    from .classify import AI_TERMS, AUTOMATION_TERMS
+    response = requests.get(
+        f"https://api.lever.co/v0/postings/{board}", params={"mode": "json"},
+        timeout=max(25, settings.request_timeout_seconds),
+        headers={"User-Agent": settings.user_agent},
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, list):
+        raise ValueError(f"{company} public listings format was not recognized")
+    jobs = []
+    for item in data:
+        if not isinstance(item, dict) or item.get("workplaceType") != "remote":
+            continue
+        categories = item.get("categories") or {}
+        if not isinstance(categories, dict):
+            continue
+        parts = [item.get("descriptionPlain") or item.get("description"),
+                 item.get("openingPlain"), item.get("additionalPlain")]
+        parts.extend(f"{section.get('text', '')} {section.get('content', '')}"
+                     for section in item.get("lists") or [] if isinstance(section, dict))
+        description = clean_text(" ".join(str(part or "") for part in parts), 8000)
+        title = clean_text(item.get("text"), 160)
+        if not any(term in f"{title} {description}".lower()
+                   for term in AI_TERMS | AUTOMATION_TERMS):
+            continue
+        locations = categories.get("allLocations") or [categories.get("location", "")]
+        location = clean_text(", ".join(str(value) for value in locations if value), 300)
+        country = {"US": "United States", "CA": "Canada", "GB": "United Kingdom",
+                   "NG": "Nigeria", "IN": "India", "DE": "Germany",
+                   "FR": "France", "AU": "Australia"}.get(item.get("country"))
+        if country and country.lower() not in location.lower():
+            location = f"{location}, {country}".strip(", ")
+        salary_range = item.get("salaryRange") or {}
+        salary = clean_text(item.get("salaryDescription"), 100)
+        if isinstance(salary_range, dict) and salary_range.get("min") is not None:
+            salary = (f"{salary_range.get('currency', '')} {salary_range['min']}"
+                      f"–{salary_range.get('max', salary_range['min'])}"
+                      f"/{salary_range.get('interval', '')}")
+        jobs.append(Job(
+            source=company, source_job_id=str(item.get("id", "")),
+            title=title, company=company, location=location,
+            direct_url=str(item.get("hostedUrl") or item.get("applyUrl") or ""),
+            published_at=_date(item.get("createdAt")), description=description,
+            salary=salary, employment_type=clean_text(categories.get("commitment"), 80),
+        ))
+    return jobs
+
+
+def fetch_welo(settings: Settings) -> list[Job]:
+    return _lever(settings, "weloglobal", "Welo Data / Welo Global")
+
+
+def fetch_rws(settings: Settings) -> list[Job]:
+    return _lever(settings, "rws", "RWS TrainAI")
+
+
+def fetch_skyward(settings: Settings) -> list[Job]:
+    return _lever(settings, "skywarditsolutions", "Skyward IT Solutions")
+
+
+def fetch_minted(settings: Settings) -> list[Job]:
+    return _lever(settings, "minted", "Minted")
+
+
 SOURCE_FETCHERS: dict[str, Callable[[Settings], list[Job]]] = {
+    "welo": fetch_welo,
+    "rws": fetch_rws,
+    "skyward": fetch_skyward,
+    "minted": fetch_minted,
     "arbeitnow": fetch_arbeitnow,
     "cryptocurrencyjobs": fetch_cryptocurrencyjobs,
     "crowdgen": fetch_crowdgen,
@@ -406,5 +477,4 @@ def collect(settings: Settings, selected: set[str] | None = None) -> list[Job]:
         except (requests.RequestException, ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
             LOGGER.warning("source=%s failed=%s", name, exc)
     return jobs
-
 

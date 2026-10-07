@@ -14,8 +14,11 @@ on:
         default: "1"
         type: string
   schedule:
-    # 07:15 West Africa Time (UTC+1), every day.
+    # Lagos: 07:15 primary, 11:35 and 18:45 recovery attempts.
+    # A shared daily quota stops after two submissions.
     - cron: "15 6 * * *"
+    - cron: "35 10 * * *"
+    - cron: "45 17 * * *"
 
 permissions:
   contents: read
@@ -34,12 +37,23 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Restore cross-run deduplication state
+      - name: Restore legacy deduplication state during migration
         uses: actions/cache/restore@v4
         with:
           path: data/seen.json
           key: quality-jobs-seen-${{ github.run_id }}
           restore-keys: |
+            quality-jobs-seen-
+      - name: Restore cross-run deduplication state
+        id: restore-state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/seen.json
+            data/daily.json
+          key: quality-jobs-state-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            quality-jobs-state-v2-
             quality-jobs-seen-
       - name: Install
         run: pip install .
@@ -65,12 +79,13 @@ jobs:
             echo "::notice::No Make webhook or Google Sheets credentials are configured; running a safe preview instead."
             quality-jobs --dry-run
           else
-            quality-jobs
+            quality-jobs --daily-limit 2
           fi
       - name: Save cross-run deduplication state
-        if: success() && hashFiles('data/seen.json') != ''
+        if: always() && !cancelled() && steps.restore-state.outcome == 'success' && hashFiles('data/seen.json') != '' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
         uses: actions/cache/save@v4
         with:
-          path: data/seen.json
-          key: quality-jobs-seen-${{ github.run_id }}
-
+          path: |
+            data/seen.json
+            data/daily.json
+          key: quality-jobs-state-v2-${{ github.run_id }}-${{ github.run_attempt }}

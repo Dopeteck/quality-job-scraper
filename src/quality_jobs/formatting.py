@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from .models import Job
+from .classify import is_automation
 from .text import safe_html, shorten
 
 
@@ -27,6 +28,8 @@ REGION_TAGS = {
 
 def role_tag(job: Job) -> str:
     title = job.title.lower()
+    if is_automation(job):
+        return "#Automation"
     for tag, pattern in ROLE_PATTERNS:
         if re.search(pattern, title):
             return tag
@@ -60,6 +63,8 @@ def build_telegram_post(job: Job) -> str:
     if not strengths:
         strengths.append("named employer; location eligibility listed")
     tags = [role_tag(job), REGION_TAGS.get(job.remote_scope, "#CheckEligibility")]
+    if is_automation(job):
+        tags.append("#AutomationJobs")
     if job.africa_eligible:
         tags.append("#AfricaEligible")
     if job.category == "ai":

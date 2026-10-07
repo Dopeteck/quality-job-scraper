@@ -4,7 +4,7 @@ import pytest
 
 from quality_jobs.config import Settings
 from quality_jobs.models import Job
-from quality_jobs.sources import collect, fetch_mercor
+from quality_jobs.sources import collect, fetch_mercor, fetch_welo
 
 
 def mercor_response(monkeypatch, state):
@@ -49,3 +49,24 @@ def test_one_broken_source_does_not_block_other_sources(monkeypatch, error):
     monkeypatch.setattr("quality_jobs.sources.SOURCE_FETCHERS", {
         "mercor": broken, "remotive": lambda settings: [expected]})
     assert collect(Settings.from_env()) == [expected]
+
+
+def test_direct_feed_keeps_dates_requirements_and_country(monkeypatch):
+    class Response:
+        def raise_for_status(self): pass
+        def json(self):
+            return [
+                {'id': '1', 'text': 'AI Response Evaluator', 'workplaceType': 'remote',
+                 'country': 'US', 'categories': {'location': 'Dallas, Texas'},
+                 'descriptionPlain': 'Evaluate artificial intelligence answers.',
+                 'lists': [{'text': 'Requirements', 'content': 'No experience required.'}],
+                 'createdAt': 1791370800000, 'hostedUrl': 'https://jobs.lever.co/weloglobal/1'},
+                {'id': '2', 'text': 'AI Evaluator', 'workplaceType': 'on-site'},
+            ]
+    monkeypatch.setattr('quality_jobs.sources.requests.get', lambda *args, **kwargs: Response())
+    jobs = fetch_welo(Settings.from_env())
+    assert len(jobs) == 1
+    assert jobs[0].published_at.year == 2026
+    assert jobs[0].location == 'Dallas, Texas, United States'
+    assert 'No experience required' in jobs[0].description
+    assert jobs[0].referral_url == ''

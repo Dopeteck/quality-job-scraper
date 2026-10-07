@@ -8,6 +8,7 @@ import sys
 import requests
 
 from .config import Settings
+from .daily import published_today, record_published
 from .pipeline import process
 from .sheets import append_jobs, existing_keys, worksheet
 from .site import send_jobs as send_site_jobs
@@ -27,6 +28,8 @@ def parser() -> argparse.ArgumentParser:
         help="Run only this source; may be repeated",
     )
     result.add_argument("--json", action="store_true", help="Print accepted jobs as JSON")
+    result.add_argument("--daily-limit", type=int, default=0,
+                        help="Maximum live submissions per Lagos day; 0 disables the cap")
     return result
 
 
@@ -36,9 +39,16 @@ def main() -> int:
     settings = Settings.from_env()
     if args.no_link_check:
         object.__setattr__(settings, "link_check_enabled", False)
+    if args.daily_limit < 0:
+        raise ValueError("--daily-limit must be non-negative")
+    if args.daily_limit and not args.dry_run:
+        remaining = args.daily_limit - published_today(settings.state_path)
+        if remaining <= 0:
+            print("Daily quota reached; skipping collection and publishing.")
+            return 0
+        object.__setattr__(settings, "max_per_run", min(settings.max_per_run, remaining))
 
-    existing_urls: set[str] = set()
-    existing_fingerprints: set[str] = set()
+    existing_urls, existing_fingerprints = load_seen(settings.state_path)
     ws = None
     if not args.dry_run:
         if not settings.make_webhook_url and not settings.google_sheet_id:
@@ -86,12 +96,19 @@ def main() -> int:
 
     if ws is not None:
         append_jobs(ws, accepted_jobs)
+        record_published(settings.state_path, len(accepted_jobs))
         print(f"Added {len(accepted_jobs)} rows to {settings.google_worksheet}")
     elif not args.dry_run and settings.make_webhook_url:
         # The Make webhook is the primary publishing path because it feeds the
         # Sheet and Telegram queue. A secondary website outage must never block
         # that delivery or cause the full batch to be retried.
-        send_jobs(settings, accepted_jobs)
+        # Persist each confirmed submission before sending the next row.
+        for job in accepted_jobs:
+            send_jobs(settings, [job])
+            save_seen(settings.state_path, existing_urls, existing_fingerprints, [job])
+            existing_urls.add(job.canonical_url)
+            existing_fingerprints.add(job.fingerprint)
+            record_published(settings.state_path, 1)
         try:
             send_site_jobs(settings, accepted_jobs)
         except (requests.RequestException, ValueError) as exc:

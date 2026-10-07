@@ -6,6 +6,11 @@ from .models import Job
 
 
 AI_TERMS = {
+    "ai data specialist",
+    "ai data trainer",
+    "ai evaluation",
+    "ai linguistic evaluator",
+    "speech ai",
     "ai engineer",
     "ai researcher",
     "ai safety",
@@ -72,6 +77,49 @@ EASY_ENTRY_TERMS = {
 }
 
 SENIOR_TERMS = {"senior", "staff", "principal", "lead", "manager", "director", "head of"}
+
+AUTOMATION_TERMS = {
+    "automation", "make.com", "zapier", "n8n", "no-code", "nocode",
+    "workflow integration", "workflow builder",
+}
+
+
+def is_automation(job: Job) -> bool:
+    if _contains(job.title.lower(), AUTOMATION_TERMS):
+        return True
+    description = job.description.lower()
+    # General company copy about automation is not a workflow-building role.
+    return bool(re.search(
+        r"\b(?:build|develop|create|maintain|design|implement|automate|integrat)\w*"
+        r"[^.;\n]{0,160}(?:make\.com|zapier|n8n|workflow automation|automated workflows|no-code)",
+        description,
+    ))
+
+
+def experience_level(job: Job) -> str:
+    title = job.title.lower()
+    description = job.description.lower()
+    if any(re.search(r"\b" + re.escape(term) + r"\b", title) for term in SENIOR_TERMS):
+        return "senior"
+    # Requirements outrank a junior title. Tool names or mentions of junior
+    # colleagues do not by themselves demonstrate low experience requirements.
+    years = [int(value) for value in re.findall(
+        r"\b(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*\+?\s*years?\b", description
+    )]
+    if years and max(years) > 2:
+        return "mid"
+    entry_title = any(re.search(r"\b" + re.escape(term) + r"\b", title)
+                      for term in EASY_ENTRY_TERMS - {"no-code", "nocode"})
+    explicit_entry = _contains(description, {
+        "no experience required", "no prior experience", "entry-level role",
+        "entry level role", "no professional experience", "no specialized technical experience",
+    })
+    specialist_requirements = bool(re.search(
+        r"\b(ph\.?d|doctorate|doctoral|master['’]?s degree|board.certified)\b", description
+    ))
+    if (entry_title or explicit_entry) and not specialist_requirements:
+        return "entry"
+    return "not_specified"
 
 WORLDWIDE_TERMS = {
     "worldwide",
@@ -157,6 +205,8 @@ def _region_scope(text: str) -> str | None:
 def _explicitly_restricted_scope(text: str) -> str | None:
     snippets = re.findall(
         r"(?:location\s*:|must\s+reside|must\s+be\s+based|"
+        r"must\s+be\s+(?:a\s+)?(?:u\.s\.|us|united states)\s+citizen|"
+        r"(?:authorized|eligible)\s+to\s+work\s+in|"
         r"candidates?\s+(?:must\s+be|based|located)|"
         r"open\s+(?:only\s+)?to|remote\s+from)[^.;\n]{0,180}", text,
     )
@@ -181,23 +231,20 @@ def classify(job: Job) -> Job:
     else:
         job.category = "tech"
 
-    if _contains(text, SENIOR_TERMS):
-        job.experience_level = "senior"
-    elif _contains(text, EASY_ENTRY_TERMS):
-        years = [int(value) for value in re.findall(r"\b(\d{1,2})\+? years?\b", text)]
-        job.experience_level = "entry" if not years or min(years) <= 2 else "mid"
-    elif re.search(r"\b(?:2|3)[-– ](?:4|5) years?\b", text) or "mid-level" in text:
-        job.experience_level = "mid"
-    else:
-        job.experience_level = "not_specified"
+    job.experience_level = experience_level(job)
 
     location = job.location.lower().strip()
     restricted_scope = _explicitly_restricted_scope(text)
     location_scope = _region_scope(location)
+    title_scope = _region_scope(job.title.lower()) if re.search(
+        r"\([^)]*\)|\b(?:based|only)\b", job.title.lower()
+    ) else None
     if restricted_scope:
         job.remote_scope = restricted_scope
     elif location_scope:
         job.remote_scope = location_scope
+    elif title_scope:
+        job.remote_scope = title_scope
     elif _contains(location, WORLDWIDE_TERMS):
         job.remote_scope = "worldwide"
     elif location in {"", "remote"} and _contains(job.description.lower(), WORLDWIDE_TERMS):
@@ -218,4 +265,3 @@ def classify(job: Job) -> Job:
         keywords.append("Africa friendly")
     job.search_keywords = ", ".join(dict.fromkeys(x for x in keywords if x))
     return job
-

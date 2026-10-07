@@ -116,8 +116,18 @@ supplied.
 4. Keep `dry_run` enabled for the first run and inspect the log.
 5. Run it once with `dry_run` disabled. Confirm rows appear in `QualityJobs`.
 
-The scheduled workflow runs once daily at 07:15 West Africa Time and adds no more than
-two jobs. GitHub may delay scheduled jobs slightly during busy periods.
+The primary schedule is 07:15 Lagos time, with recovery attempts at 11:35 and 18:45.
+Every live workflow run uses `--daily-limit 2`: only remaining slots are collected;
+confirmed submissions are counted in `data/daily.json`, resetting at Lagos midnight.
+A zero-job run leaves the slots available for a later recovery attempt. Preview runs
+do not consume the quota. The October 7 migration seed records the two jobs already
+submitted before this guard was installed. GitHub can still delay or drop scheduled
+triggers; these backups reduce that risk but do not guarantee execution times.
+
+Each confirmed Make submission saves its deduplication keys and increments the daily
+count before the next row is sent. The workflow saves state even after a later failure,
+and uses a different cache key for each retry attempt. The legacy cache is restored
+separately during migration so earlier duplicate tracking is preserved.
 
 ## Make change
 
@@ -174,3 +184,19 @@ Search Rows limit 1, sort quality_score descending if supported, then mark the
 originating row processed only after a successful send. Before switching format,
 review old pending rows so stale long posts do not continue to drain from the queue.
 Update the Telegram channel title/description using the owner's admin access.
+
+
+## Beginner AI and automation coverage
+
+Direct public employer feeds now include Welo Data / Welo Global, RWS TrainAI,
+Skyward IT Solutions, and Minted, alongside the existing CrowdGen and general job boards.
+Only remote AI/automation vacancies from these feeds are candidates; dated listings
+still expire after seven days. Talent networks, future-opportunity pools and speculative
+applications are held rather than represented as current jobs. No dates are invented.
+
+Beginner AI/automation candidates receive first consideration within the existing
+quality, source and referral caps. Make.com, Zapier, n8n and workflow automation roles
+use #Automation and #AutomationJobs. Tool names alone do not mean entry-level;
+experience requirements override junior titles, and specialist postgraduate
+requirements prevent an entry label. The full requirements are checked before the
+short Telegram message is generated. The output remains the same 26-column payload.

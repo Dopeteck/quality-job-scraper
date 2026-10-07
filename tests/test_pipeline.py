@@ -387,3 +387,54 @@ def test_current_mercor_ai_titles_are_classified():
     from quality_jobs.classify import classify
     for title in ["Multimodal Image Expert", "AI Safety and Model Evaluation", "AI Engineer", "LLM Researcher"]:
         assert classify(job(title=title, description="Evaluate outputs.")).category == "ai"
+
+
+def test_automation_beginner_roles_are_prioritized_and_tagged():
+    automation = job(title='Junior Workflow Automation Assistant', source='Employer',
+                     description='Build Make.com and n8n workflows. No experience required.',
+                     direct_url='https://example.com/automation')
+    senior = job(title='Senior AI Researcher', source='Mercor', salary='$100/hour',
+                 direct_url='https://example.com/senior')
+    selected, _ = process([senior, automation], settings(max_per_run=1))
+    assert selected == [automation]
+    assert '#AutomationJobs' in automation.telegram_post
+    assert '#EntryLevel' in automation.telegram_post
+
+
+def test_no_code_or_mentoring_does_not_imply_beginner():
+    from quality_jobs.classify import classify
+    for description in ['Build no-code workflows using n8n and mentor junior colleagues.',
+                        'Use Make.com. Requires 5+ years of experience.']:
+        item = classify(job(title='Automation Specialist', description=description))
+        assert item.experience_level != 'entry'
+
+
+def test_company_automation_copy_does_not_create_automation_tag():
+    from quality_jobs.classify import is_automation
+    assert not is_automation(job(title='AI Data Annotator',
+        description='Our company provides automation services. Label images.'))
+    assert is_automation(job(title='Operations Specialist',
+        description='Build workflows using Make.com and n8n.'))
+
+
+def test_requirements_override_junior_title_and_ignore_manager_in_description():
+    from quality_jobs.classify import classify
+    assert classify(job(title='Junior Automation Developer',
+                        description='Requires 3–5 years of professional experience.')).experience_level == 'mid'
+    assert classify(job(title='Junior Automation Assistant',
+                        description='Report to a manager. No experience required.')).experience_level == 'entry'
+
+
+def test_talent_pools_are_not_promoted_as_live_vacancies():
+    for title in ['AI Trainers Network - English', 'Future Opportunities: AI Talent Pool',
+                  'Initiative application (m/f/x)']:
+        selected, rejected = process([job(title=title)], settings())
+        assert not selected
+        assert rejected[0].quality_score == -100
+
+
+def test_title_country_restriction_overrides_worldwide_location():
+    selected, _ = process([job(title='AI Evaluator (United States)', location='Remote, Worldwide')],
+                         settings(allowed_remote_scopes=frozenset({'us'})))
+    assert selected[0].remote_scope == 'us'
+    assert '#Worldwide' not in selected[0].telegram_post

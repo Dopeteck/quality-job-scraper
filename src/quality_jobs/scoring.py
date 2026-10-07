@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from .config import Settings
+from .classify import is_automation
 from .language import is_probably_english
 from .models import Job
 
@@ -28,6 +29,11 @@ GENERIC_TITLES = {
     "various roles",
 }
 
+NON_VACANCY_TITLES = {
+    "initiative application", "spontaneous application", "speculative application",
+    "talent pool", "talent network", "trainers network", "future opportunities",
+}
+
 
 def age_days(job: Job, now: datetime | None = None) -> float | None:
     if not job.published_at:
@@ -47,6 +53,10 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
     if not job.title.strip() or job.title.strip().lower() in GENERIC_TITLES:
         job.quality_score = -100
         job.quality_reasons = ["rejected: generic or missing title"]
+        return job
+    if any(term in job.title.lower() for term in NON_VACANCY_TITLES):
+        job.quality_score = -100
+        job.quality_reasons = ["rejected: talent pool or speculative application, not a specific vacancy"]
         return job
     if any(term in text for term in BLOCK_TERMS):
         job.quality_score = -100
@@ -99,6 +109,9 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
     if job.category == "ai":
         score += 2
         reasons.append("AI opportunity (+2)")
+    if is_automation(job):
+        score += 2
+        reasons.append("automation work (+2)")
     if job.experience_level == "entry":
         score += 3
         reasons.append("entry level (+3)")
