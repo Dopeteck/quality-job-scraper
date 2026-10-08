@@ -268,6 +268,15 @@ def test_site_payload_uses_effective_apply_url_and_iso_dates():
     assert data["scraped_at"].endswith("Z")
 
 
+def test_site_summary_respects_api_limit_without_losing_scoring_requirements():
+    item = job(description='a' * 3999 + '\U0001f4bb' + 'Requires 5 years of experience.' * 150)
+    original = item.description
+    data = site_payload(item)
+    assert len(data['summary'].encode('utf-16-le')) <= 8000
+    assert item.description == original
+    assert site_payload(job(description='Short description'))['summary'] == 'Short description'
+
+
 def test_seen_state_round_trip(tmp_path):
     accepted, _ = process([job()], settings())
     state_path = tmp_path / "seen.json"

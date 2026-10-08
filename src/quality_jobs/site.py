@@ -22,7 +22,9 @@ def payload(job: Job) -> dict[str, object]:
         "title": job.title,
         "company": job.company,
         "location": job.location or "Remote",
-        "summary": job.description,
+        # The hub accepts at most 4,000 UTF-16 units; retain full requirements
+        # on the Job for classification and the Sheets payload.
+        "summary": job.description.encode("utf-16-le")[:8000].decode("utf-16-le", errors="ignore"),
         "category": job.category,
         "opportunity_type": job.opportunity_type,
         "experience_level": job.experience_level,
@@ -69,3 +71,4 @@ def send_jobs(settings: Settings, jobs: list[Job]) -> None:
                 response=response,
                 request=response.request,
             ) from exc
+
