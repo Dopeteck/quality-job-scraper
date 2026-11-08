@@ -388,7 +388,7 @@ def _logged_reason_counts(caplog):
         record for record in caplog.records
         if record.getMessage().startswith("rejected_or_held_by_reason=")
     )
-    return record.args[0]
+    return record.args
 
 
 def test_rejection_reason_log_uses_distinct_stable_categories(caplog):
