@@ -181,5 +181,15 @@ def process(
         job.quality_reasons.append("held: per-run/source/referral balance limit")
     rejected_jobs.extend(overflow)
     LOGGER.info("accepted=%d rejected_or_held=%d", len(selected), len(rejected_jobs))
+    if selected:
+        LOGGER.info("selected_by_category=%s", dict(Counter(job.category for job in selected)))
+        LOGGER.info("selected_by_source=%s", dict(Counter(job.source for job in selected)))
+    reasons = Counter(
+        reason.split(":", 1)[0]
+        for job in rejected_jobs
+        for reason in job.quality_reasons
+    )
+    if reasons:
+        LOGGER.info("rejected_or_held_by_reason=%s", dict(reasons))
     return selected, rejected_jobs
 

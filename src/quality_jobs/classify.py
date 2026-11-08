@@ -195,10 +195,26 @@ def _region_scope(text: str) -> str | None:
         re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text, re.I)
         for term in terms
     )]
+    country_scopes = [
+        ("africa_nigeria", r"\bnigeria\b"),
+        ("africa_ghana", r"\bghana\b"),
+        ("africa_kenya", r"\bkenya\b"),
+        ("africa_south_africa", r"\bsouth africa\b"),
+        ("africa_egypt", r"\begypt\b"),
+        ("africa_morocco", r"\bmorocco\b"),
+    ]
+    african_countries = [scope for scope, pattern in country_scopes if has(pattern)]
+    if len(african_countries) == 1 and matches == ["africa"]:
+        return african_countries[0]
     if len(matches) == 1 and not (us or canada or uk or eu):
         return matches[0]
     if has(r"\bnorth america\b") and not matches:
         return "us_canada"
+    # Preserve country-only restrictions instead of turning them into
+    # continent-wide eligibility. A multi-country Africa scope stays Africa.
+    africa_region = has(r"\b(africa|emea)\b")
+    if len(african_countries) == 1 and not africa_region and len(matches) <= 1:
+        return african_countries[0]
     return None
 
 
@@ -222,12 +238,23 @@ def classify(job: Job) -> Job:
         [job.title, job.description, job.location, job.employment_type]
     ).lower()
 
+    title = job.title.lower()
     if _contains(text, AI_TERMS):
         job.category = "ai"
         if _contains(text, {"annotation", "labeling", "evaluator", "rater", "transcription"}):
             job.opportunity_type = "ai_gig"
     elif _contains(text, {"web3", "blockchain", "crypto", "solidity", "defi"}):
         job.category = "web3"
+    elif re.search(r"\b(customer|technical|client|product) support\b|\bhelp ?desk\b", title):
+        job.category = "support"
+    elif re.search(r"\b(marketing|seo|growth|content|social media)\b", title):
+        job.category = "marketing"
+    elif re.search(r"\b(design|designer|ux|ui|product design)\b", title):
+        job.category = "design"
+    elif re.search(r"\b(data analyst|data scientist|business intelligence|analytics)\b", title):
+        job.category = "data"
+    elif is_automation(job):
+        job.category = "automation"
     else:
         job.category = "tech"
 
@@ -251,7 +278,10 @@ def classify(job: Job) -> Job:
         job.remote_scope = "worldwide"
     else:
         job.remote_scope = "unknown"
-    job.africa_eligible = job.remote_scope in {"worldwide", "africa", "emea"}
+    job.africa_eligible = (
+        job.remote_scope in {"worldwide", "africa", "emea"}
+        or job.remote_scope.startswith("africa_")
+    )
 
     # Mercor's published policy says unspecified listings default to US/CA/UK/EU.
     if job.source.lower() == "mercor" and job.remote_scope == "unknown":
