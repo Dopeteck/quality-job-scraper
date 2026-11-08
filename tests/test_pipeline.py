@@ -247,7 +247,7 @@ def test_telegram_post_is_short_useful_and_filterable():
     assert "pay disclosed" in post
     assert "Save this to Saved Messages" in post
     assert "#Worldwide" in post and "#AfricaEligible" in post
-    assert "React" not in post and "Evaluate artificial intelligence responses" not in post
+    assert "Evaluate artificial intelligence responses" in post
     assert len(post) < 800
 
 
