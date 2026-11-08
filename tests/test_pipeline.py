@@ -392,6 +392,7 @@ def _logged_reason_counts(caplog):
 
 
 def test_rejection_reason_log_uses_distinct_stable_categories(caplog):
+    caplog.set_level("INFO")
     now = datetime.now(timezone.utc)
     duplicate_a = job(title="Duplicate Support Specialist", direct_url="https://example.com/dup/1")
     duplicate_b = job(title="Duplicate Support Specialist", direct_url="https://example.com/dup/2")
@@ -427,6 +428,7 @@ def test_rejection_reason_log_uses_distinct_stable_categories(caplog):
 
 
 def test_hold_reason_log_distinguishes_source_run_and_referral_limits(caplog):
+    caplog.set_level("INFO")
     process(
         [job(title="Source Cap One", source="One", direct_url="https://example.com/s1"),
          job(title="Source Cap Two", source="One", direct_url="https://example.com/s2")],
