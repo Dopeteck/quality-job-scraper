@@ -459,6 +459,17 @@ def test_hold_reason_log_distinguishes_source_run_and_referral_limits(caplog):
     assert "example.com" not in caplog.text
 
 
+def test_per_run_limit_precedes_source_limit_for_overlapping_hold(caplog):
+    caplog.set_level("INFO")
+    process(
+        [job(title="Overlap One", source="Same", direct_url="https://example.com/o1"),
+         job(title="Overlap Two", source="Same", direct_url="https://example.com/o2")],
+        settings(max_per_run=1, max_per_source=1),
+    )
+
+    assert _logged_reason_counts(caplog) == {"per_run_limit": 1}
+
+
 def test_cross_source_duplicate_does_not_consume_link_check_pool(monkeypatch):
     checked = []
     def verify(item, config):

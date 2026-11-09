@@ -131,6 +131,9 @@ def _rejection_category(job: Job, settings: Settings) -> str:
 
 def _hold_category(job: Job, selected: list[Job], settings: Settings) -> str:
     """Report the first deterministic selection constraint that held a job."""
+    if len(selected) >= settings.max_per_run:
+        return "per_run_limit"
+
     source_count = sum(item.source == job.source for item in selected)
     if source_count >= settings.max_per_source:
         return "source_limit"
@@ -143,8 +146,6 @@ def _hold_category(job: Job, selected: list[Job], settings: Settings) -> str:
     referral_count = sum(item.is_referral for item in selected)
     if job.is_referral and referral_count >= referral_limit:
         return "referral_limit"
-    if len(selected) >= settings.max_per_run:
-        return "per_run_limit"
     return "selection_balance_limit"
 
 
