@@ -23,6 +23,9 @@ REGION_TAGS = {
     "us_ca_uk_eu": "#USCanadaUKEU", "latam": "#LATAM",
     "asia": "#APAC", "middle_east": "#MENA", "oceania": "#Oceania",
     "unknown": "#CheckEligibility",
+    "africa_nigeria": "#NigeriaOnly", "africa_ghana": "#GhanaOnly",
+    "africa_kenya": "#KenyaOnly", "africa_south_africa": "#SouthAfricaOnly",
+    "africa_egypt": "#EgyptOnly", "africa_morocco": "#MoroccoOnly",
 }
 
 
@@ -46,6 +49,9 @@ def build_telegram_post(job: Job) -> str:
         "us_canada": "US/Canada remote", "us_ca_uk_eu": "US/Canada/UK/EU",
         "latam": "LATAM remote", "asia": "Asia/APAC remote",
         "middle_east": "Middle East/MENA remote", "oceania": "Oceania remote",
+        "africa_nigeria": "Nigeria only", "africa_ghana": "Ghana only",
+        "africa_kenya": "Kenya only", "africa_south_africa": "South Africa only",
+        "africa_egypt": "Egypt only", "africa_morocco": "Morocco only",
     }
     scope = scope_labels.get(job.remote_scope, "Check location eligibility")
     location = shorten(job.location, 160)
@@ -62,6 +68,11 @@ def build_telegram_post(job: Job) -> str:
         strengths.append("AI work")
     if not strengths:
         strengths.append("named employer; location eligibility listed")
+    # A short factual excerpt makes the post useful when forwarded without
+    # copying the listing. Keep HTML escaping at the final output boundary.
+    summary = re.sub(r"\s+", " ", job.description).strip()
+    summary = re.sub(r"<[^>]*>", " ", summary)
+    summary = shorten(summary, 220)
     tags = [role_tag(job), REGION_TAGS.get(job.remote_scope, "#CheckEligibility")]
     if is_automation(job):
         tags.append("#AutomationJobs")
@@ -78,6 +89,8 @@ def build_telegram_post(job: Job) -> str:
         safe_html(shorten(job.company, 80)),
         f"💵 {safe_html(shorten(job.salary, 100)) if job.salary else 'Pay not disclosed'}",
         f"📍 {safe_html(scope)}",
+        f"🧭 {safe_html(summary)}" if summary else "",
+        f"🎚 {safe_html(job.experience_level.replace('_', ' ').title())}",
         "",
         f"✅ Why it stands out: {safe_html('; '.join(strengths[:2]))}.",
         "",

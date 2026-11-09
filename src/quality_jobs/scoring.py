@@ -96,12 +96,11 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
         score += 2
         reasons.append("posted within 7 days (+2)")
 
-    if job.remote_scope == "worldwide":
-        score += 4
-        reasons.append("worldwide (+4)")
-    else:
-        score += 1
-        reasons.append("remote scope accepted (+1)")
+    # Eligibility is a gate: a verified Africa/region-restricted job is not
+    # inherently lower quality than a worldwide listing.
+    if job.remote_scope != "unknown":
+        score += 2
+        reasons.append("eligible remote scope verified (+2)")
 
     if job.salary:
         score += 2

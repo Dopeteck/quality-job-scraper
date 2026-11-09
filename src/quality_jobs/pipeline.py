@@ -102,6 +102,53 @@ def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
     return sorted(selected, key=lambda item: item.quality_score, reverse=True)
 
 
+def _rejection_category(job: Job, settings: Settings) -> str:
+    """Map per-job reasons to stable labels safe for aggregate logs."""
+    detail = " ".join(job.quality_reasons).lower()
+    categories = (
+        ("duplicate", "duplicate"),
+        ("missing_application_url", "missing url"),
+        ("outside_target_region", "outside target region"),
+        ("broken_application_link", "broken application link"),
+        ("expired_or_stale", "days old"),
+        ("unsupported_language", "non-english listing"),
+        ("promotional_or_unpaid", "course, unpaid, or promotional"),
+        ("non_specific_vacancy", "talent pool or speculative application"),
+        ("generic_or_missing_title", "generic or missing title"),
+        ("suspicious_earnings_claim", "suspicious earnings claim"),
+    )
+    for category, marker in categories:
+        if marker in detail:
+            return category
+    if settings.require_known_location and job.remote_scope == "unknown":
+        return "unknown_location"
+    if job.quality_score < settings.min_quality_score:
+        return "below_quality_threshold"
+    if settings.link_check_enabled and job.link_status == "unchecked":
+        return "application_link_unverified"
+    return "rejected_other"
+
+
+def _hold_category(job: Job, selected: list[Job], settings: Settings) -> str:
+    """Report the first deterministic selection constraint that held a job."""
+    if len(selected) >= settings.max_per_run:
+        return "per_run_limit"
+
+    source_count = sum(item.source == job.source for item in selected)
+    if source_count >= settings.max_per_source:
+        return "source_limit"
+
+    referral_limit = (
+        max(1, math.floor(settings.max_per_run * settings.max_referral_share))
+        if settings.max_referral_share > 0
+        else 0
+    )
+    referral_count = sum(item.is_referral for item in selected)
+    if job.is_referral and referral_count >= referral_limit:
+        return "referral_limit"
+    return "selection_balance_limit"
+
+
 def process(
     jobs: list[Job],
     settings: Settings,
@@ -178,8 +225,22 @@ def process(
     selected = _balanced_limit(accepted_jobs, settings)
     overflow = [job for job in accepted_jobs if job not in selected]
     for job in overflow:
-        job.quality_reasons.append("held: per-run/source/referral balance limit")
+        category = _hold_category(job, selected, settings)
+        job.quality_reasons.append(f"held: {category}")
     rejected_jobs.extend(overflow)
     LOGGER.info("accepted=%d rejected_or_held=%d", len(selected), len(rejected_jobs))
+    if selected:
+        LOGGER.info("selected_by_category=%s", dict(Counter(job.category for job in selected)))
+        LOGGER.info("selected_by_source=%s", dict(Counter(job.source for job in selected)))
+    reasons = Counter()
+    for job in rejected_jobs:
+        hold_reasons = [reason for reason in job.quality_reasons if reason.startswith("held:")]
+        if hold_reasons:
+            # Categories are internal constants generated above, never listing text.
+            reasons[hold_reasons[-1].split(":", 1)[1].strip()] += 1
+        else:
+            reasons[_rejection_category(job, settings)] += 1
+    if reasons:
+        LOGGER.info("rejected_or_held_by_reason=%s", dict(reasons))
     return selected, rejected_jobs
 

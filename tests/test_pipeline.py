@@ -78,6 +78,45 @@ def test_good_ai_entry_job_is_accepted_and_formatted():
     assert "Referral disclosure" not in item.telegram_post
 
 
+def test_customer_support_is_classified_and_post_includes_listing_context():
+    listing = job(
+        title="Customer Support Specialist",
+        description="Help customers troubleshoot account and billing issues. Remote worldwide.",
+        location="Worldwide",
+        salary="",
+    )
+    accepted_jobs, _ = process([listing], settings())
+    assert accepted_jobs[0].category == "support"
+    assert "Help customers troubleshoot account" in accepted_jobs[0].telegram_post
+    assert "Pay not disclosed" in accepted_jobs[0].telegram_post
+
+
+def test_verified_africa_scope_is_not_scored_below_worldwide_for_scope_alone():
+    worldwide = job(title="Support Specialist", remote_scope="worldwide", africa_eligible=True)
+    africa = job(title="Support Specialist", remote_scope="africa", africa_eligible=True)
+    from quality_jobs.scoring import score_job
+
+    score_job(worldwide, settings())
+    score_job(africa, settings())
+    assert worldwide.quality_score == africa.quality_score
+
+
+def test_country_restricted_african_job_keeps_country_eligibility_visible():
+    listing = job(
+        title="Customer Support Specialist",
+        location="Nigeria",
+        description="Remote from Nigeria. Support customers using our product.",
+    )
+    accepted_jobs, _ = process(
+        [listing],
+        settings(allowed_remote_scopes=frozenset({"worldwide", "africa", "africa_nigeria"})),
+    )
+    assert accepted_jobs[0].remote_scope == "africa_nigeria"
+    assert accepted_jobs[0].africa_eligible is True
+    assert "Nigeria only" in accepted_jobs[0].telegram_post
+    assert "#NigeriaOnly" in accepted_jobs[0].telegram_post
+
+
 def test_old_job_is_rejected():
     accepted, rejected = process(
         [job(published_at=datetime.now(timezone.utc) - timedelta(days=14))], settings()
@@ -208,7 +247,7 @@ def test_telegram_post_is_short_useful_and_filterable():
     assert "pay disclosed" in post
     assert "Save this to Saved Messages" in post
     assert "#Worldwide" in post and "#AfricaEligible" in post
-    assert "React" not in post and "Evaluate artificial intelligence responses" not in post
+    assert "Evaluate artificial intelligence responses" in post
     assert len(post) < 800
 
 
@@ -342,6 +381,93 @@ def test_global_batch_limit_and_source_diversity():
     selected, _ = process(items, settings(max_per_run=2, max_per_source=1))
     assert len(selected) == 2
     assert len({item.source for item in selected}) == 2
+
+
+def _logged_reason_counts(caplog):
+    record = next(
+        record for record in caplog.records
+        if record.getMessage().startswith("rejected_or_held_by_reason=")
+    )
+    return record.args
+
+
+def test_rejection_reason_log_uses_distinct_stable_categories(caplog):
+    caplog.set_level("INFO")
+    now = datetime.now(timezone.utc)
+    duplicate_a = job(title="Duplicate Support Specialist", direct_url="https://example.com/dup/1")
+    duplicate_b = job(title="Duplicate Support Specialist", direct_url="https://example.com/dup/2")
+    candidates = [
+        job(title="Stale Data Analyst", direct_url="https://example.com/stale",
+            published_at=now - timedelta(days=14)),
+        job(title="US Support Specialist", direct_url="https://example.com/us",
+            location="United States only",
+            description="Remote customer support role for United States residents."),
+        job(title="Unclear Support Specialist", direct_url="https://example.com/unknown",
+            location="Remote", description="Help customers resolve product issues."),
+        job(title="Broken Support Specialist", direct_url="https://example.com/broken",
+            link_status="404"),
+        job(title="Low Quality Specialist", direct_url="https://example.com/low",
+            published_at=None, description="Short listing.", salary=""),
+        duplicate_a,
+        duplicate_b,
+    ]
+
+    process(candidates, settings(), existing_urls=set(), existing_fingerprints=set())
+    counts = _logged_reason_counts(caplog)
+
+    assert counts == {
+        "expired_or_stale": 1,
+        "outside_target_region": 1,
+        "unknown_location": 1,
+        "broken_application_link": 1,
+        "below_quality_threshold": 1,
+        "duplicate": 1,
+    }
+    assert "example.com" not in caplog.text
+    assert "days old" not in caplog.text
+
+
+def test_hold_reason_log_distinguishes_source_run_and_referral_limits(caplog):
+    caplog.set_level("INFO")
+    process(
+        [job(title="Source Cap One", source="One", direct_url="https://example.com/s1"),
+         job(title="Source Cap Two", source="One", direct_url="https://example.com/s2")],
+        settings(max_per_run=5, max_per_source=1),
+    )
+    source_counts = _logged_reason_counts(caplog)
+    assert source_counts == {"source_limit": 1}
+
+    caplog.clear()
+    process(
+        [job(title="Run Cap One", source="One", direct_url="https://example.com/r1"),
+         job(title="Run Cap Two", source="Two", direct_url="https://example.com/r2")],
+        settings(max_per_run=1, max_per_source=5),
+    )
+    run_counts = _logged_reason_counts(caplog)
+    assert run_counts == {"per_run_limit": 1}
+
+    caplog.clear()
+    process(
+        [job(title="Referral One", source="One", direct_url="https://example.com/f1",
+             referral_url="https://example.com/ref/1"),
+         job(title="Referral Two", source="Two", direct_url="https://example.com/f2",
+             referral_url="https://example.com/ref/2")],
+        settings(max_per_run=4, max_per_source=5, max_referral_share=0.25),
+    )
+    referral_counts = _logged_reason_counts(caplog)
+    assert referral_counts == {"referral_limit": 1}
+    assert "example.com" not in caplog.text
+
+
+def test_per_run_limit_precedes_source_limit_for_overlapping_hold(caplog):
+    caplog.set_level("INFO")
+    process(
+        [job(title="Overlap One", source="Same", direct_url="https://example.com/o1"),
+         job(title="Overlap Two", source="Same", direct_url="https://example.com/o2")],
+        settings(max_per_run=1, max_per_source=1),
+    )
+
+    assert _logged_reason_counts(caplog) == {"per_run_limit": 1}
 
 
 def test_cross_source_duplicate_does_not_consume_link_check_pool(monkeypatch):
