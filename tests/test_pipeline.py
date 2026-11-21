@@ -650,6 +650,6 @@ def test_role_category_does_not_inflate_quality_score():
         score_job(item, settings())
         assert "recognized role category (+2)" not in item.quality_reasons
         scores.append(item.quality_score)
-    # Freshness, verified scope, employer and description contribute 9 points;
-    # category membership itself must contribute zero.
-    assert scores == [9, 9, 9]
+    # Freshness, verified scope, salary, employer and description contribute
+    # 11 points; category membership itself must contribute zero.
+    assert scores == [11, 11, 11]
