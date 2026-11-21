@@ -98,8 +98,6 @@ def is_automation(job: Job) -> bool:
 
 def experience_level(job: Job) -> str:
     title = job.title.lower()
-    # Keep location eligibility checks based on the full listing text.
-    text = " ".join([job.title, job.description, job.location, job.employment_type]).lower()
     description = job.description.lower()
     if any(re.search(r"\b" + re.escape(term) + r"\b", title) for term in SENIOR_TERMS):
         return "senior"
@@ -240,6 +238,8 @@ def classify(job: Job) -> Job:
     # A company can mention AI throughout its description while hiring for
     # support, design, sales, or operations roles.
     title = job.title.lower()
+    # Keep location eligibility checks based on the full listing text.
+    text = " ".join([job.title, job.description, job.location, job.employment_type]).lower()
     if re.search(r"\b(customer|technical|client|product) support\b|\bhelp ?desk\b|\bcommunity moderator\b", title):
         job.category = "support"
     elif re.search(r"\b(marketing|seo|growth|content|social media)\b", title):
