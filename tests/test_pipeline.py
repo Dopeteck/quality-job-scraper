@@ -80,6 +80,20 @@ def test_good_ai_entry_job_is_accepted_and_formatted():
     assert "Referral disclosure" not in item.telegram_post
 
 
+def test_role_title_wins_over_generic_employer_ai_marketing_copy():
+    listing = job(
+        title="Designated Technical Support Engineer - West",
+        description=(
+            "The employer builds artificial intelligence and machine learning "
+            "products. The role responds to customer tickets and resolves technical issues."
+        ),
+        location="Worldwide",
+    )
+    from quality_jobs.classify import classify
+    classify(listing)
+    assert listing.category == "support"
+
+
 def test_customer_support_is_classified_and_post_includes_listing_context():
     listing = job(
         title="Customer Support Specialist",
