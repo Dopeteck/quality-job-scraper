@@ -98,6 +98,8 @@ def is_automation(job: Job) -> bool:
 
 def experience_level(job: Job) -> str:
     title = job.title.lower()
+    # Keep location eligibility checks based on the full listing text.
+    text = " ".join([job.title, job.description, job.location, job.employment_type]).lower()
     description = job.description.lower()
     if any(re.search(r"\b" + re.escape(term) + r"\b", title) for term in SENIOR_TERMS):
         return "senior"
