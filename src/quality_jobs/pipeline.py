@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
-from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .classify import classify, is_automation
+from .classify import classify
 from .config import Settings
 from .formatting import build_telegram_post
 from .linkcheck import check_link
