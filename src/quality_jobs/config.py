@@ -25,6 +25,8 @@ class Settings:
     max_job_age_days: int
     max_per_run: int
     max_per_source: int
+    max_link_check_candidates: int
+    max_link_check_per_source: int
     max_referral_share: float
     entry_priority_share: float
     ai_priority_share: float
@@ -58,6 +60,8 @@ class Settings:
             max_job_age_days=int(os.getenv("MAX_JOB_AGE_DAYS", "7")),
             max_per_run=int(os.getenv("MAX_PER_RUN", "2")),
             max_per_source=int(os.getenv("MAX_PER_SOURCE", "1")),
+            max_link_check_candidates=int(os.getenv("MAX_LINK_CHECK_CANDIDATES", "40")),
+            max_link_check_per_source=int(os.getenv("MAX_LINK_CHECK_PER_SOURCE", "8")),
             max_referral_share=float(os.getenv("MAX_REFERRAL_SHARE", "0.20")),
             entry_priority_share=float(os.getenv("ENTRY_PRIORITY_SHARE", "0.40")),
             ai_priority_share=float(os.getenv("AI_PRIORITY_SHARE", "0.40")),

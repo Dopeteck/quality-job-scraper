@@ -24,6 +24,8 @@ def settings(**overrides) -> Settings:
         max_job_age_days=10,
         max_per_run=20,
         max_per_source=6,
+        max_link_check_candidates=40,
+        max_link_check_per_source=8,
         max_referral_share=0.2,
         entry_priority_share=0.35,
         ai_priority_share=0.30,
@@ -76,6 +78,20 @@ def test_good_ai_entry_job_is_accepted_and_formatted():
     assert item.quality_score >= 8
     assert "#AIJobs" in item.telegram_post
     assert "Referral disclosure" not in item.telegram_post
+
+
+def test_role_title_wins_over_generic_employer_ai_marketing_copy():
+    listing = job(
+        title="Designated Technical Support Engineer - West",
+        description=(
+            "The employer builds artificial intelligence and machine learning "
+            "products. The role responds to customer tickets and resolves technical issues."
+        ),
+        location="Worldwide",
+    )
+    from quality_jobs.classify import classify
+    classify(listing)
+    assert listing.category == "support"
 
 
 def test_customer_support_is_classified_and_post_includes_listing_context():
@@ -344,6 +360,8 @@ def test_global_defaults_are_curated():
     config = Settings.from_env()
     assert {"worldwide", "us", "eu", "latam", "asia"} <= config.allowed_remote_scopes
     assert config.max_per_run == 2 and config.max_per_source == 1
+    assert config.max_link_check_candidates == 40
+    assert config.max_link_check_per_source == 8
     assert config.max_job_age_days == 7 and config.min_quality_score == 9
 
 
@@ -573,3 +591,67 @@ def test_title_country_restriction_overrides_worldwide_location():
                          settings(allowed_remote_scopes=frozenset({'us'})))
     assert selected[0].remote_scope == 'us'
     assert '#Worldwide' not in selected[0].telegram_post
+
+
+def test_link_check_budget_is_not_limited_to_twice_the_post_count(monkeypatch):
+    checked = []
+    def verify(item, config):
+        checked.append(item.direct_url)
+        return "200"
+    monkeypatch.setattr("quality_jobs.pipeline._verify_and_check", verify)
+    categories = [
+        ("Customer Support Specialist", "support"),
+        ("Marketing Coordinator", "marketing"),
+        ("Product Designer", "design"),
+        ("Data Analyst", "data"),
+        ("Software Developer", "tech"),
+        ("AI Response Evaluator", "ai"),
+        ("Web3 Community Manager", "web3"),
+        ("Automation Specialist", "automation"),
+    ]
+    items = [
+        job(title=title, source=f"Source {index}",
+            direct_url=f"https://example.com/jobs/{index}",
+            description="Help customers and teams complete clearly defined work. Remote worldwide.")
+        for index, (title, _) in enumerate(categories)
+    ]
+    process(items, settings(link_check_enabled=True, max_per_run=2,
+                            max_link_check_candidates=40, max_link_check_per_source=8))
+    assert len(checked) == len(items)
+
+
+def test_small_batch_prefers_distinct_role_categories():
+    items = [
+        job(title="AI Response Evaluator", source="One",
+            direct_url="https://example.com/ai"),
+        job(title="AI Data Annotator", source="Two",
+            direct_url="https://example.com/annotator"),
+        job(title="Customer Support Specialist", source="Three",
+            direct_url="https://example.com/support",
+            description="Help customers resolve account issues. Remote worldwide."),
+    ]
+    selected, _ = process(items, settings(max_per_run=2, max_per_source=2))
+    assert len(selected) == 2
+    assert len({item.category for item in selected}) == 2
+
+
+def test_role_category_does_not_inflate_quality_score():
+    from quality_jobs.classify import classify
+    from quality_jobs.scoring import score_job
+    titles = [
+        "AI Response Evaluator",
+        "Customer Support Specialist",
+        "Software Developer",
+    ]
+    scores = []
+    for title in titles:
+        item = job(title=title, description="Complete assigned tasks using documented procedures.")
+        classify(item)
+        # Hold experience level constant so this isolates category scoring.
+        item.experience_level = "not_specified"
+        score_job(item, settings())
+        assert "recognized role category (+2)" not in item.quality_reasons
+        scores.append(item.quality_score)
+    # Freshness, verified scope, salary and employer contribute 10 points;
+    # category membership itself must contribute zero.
+    assert scores == [10, 10, 10]

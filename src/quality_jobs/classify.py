@@ -234,18 +234,13 @@ def _explicitly_restricted_scope(text: str) -> str | None:
 
 
 def classify(job: Job) -> Job:
-    text = " ".join(
-        [job.title, job.description, job.location, job.employment_type]
-    ).lower()
-
+    # Classify the actual vacancy, not generic employer marketing copy.
+    # A company can mention AI throughout its description while hiring for
+    # support, design, sales, or operations roles.
     title = job.title.lower()
-    if _contains(text, AI_TERMS):
-        job.category = "ai"
-        if _contains(text, {"annotation", "labeling", "evaluator", "rater", "transcription"}):
-            job.opportunity_type = "ai_gig"
-    elif _contains(text, {"web3", "blockchain", "crypto", "solidity", "defi"}):
-        job.category = "web3"
-    elif re.search(r"\b(customer|technical|client|product) support\b|\bhelp ?desk\b", title):
+    # Keep location eligibility checks based on the full listing text.
+    text = " ".join([job.title, job.description, job.location, job.employment_type]).lower()
+    if re.search(r"\b(customer|technical|client|product) support\b|\bhelp ?desk\b|\bcommunity moderator\b", title):
         job.category = "support"
     elif re.search(r"\b(marketing|seo|growth|content|social media)\b", title):
         job.category = "marketing"
@@ -255,6 +250,12 @@ def classify(job: Job) -> Job:
         job.category = "data"
     elif is_automation(job):
         job.category = "automation"
+    elif _contains(title, {"web3", "blockchain", "crypto", "solidity", "defi"}):
+        job.category = "web3"
+    elif _contains(title, AI_TERMS):
+        job.category = "ai"
+        if _contains(title, {"annotation", "labeling", "evaluator", "rater", "transcription"}):
+            job.opportunity_type = "ai_gig"
     else:
         job.category = "tech"
 

@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import math
 from collections import Counter
-from itertools import zip_longest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .classify import classify, is_automation
+from .classify import classify
 from .config import Settings
 from .formatting import build_telegram_post
 from .linkcheck import check_link
@@ -92,12 +91,19 @@ def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
             referral_count += int(job.is_referral)
             added += 1
 
-    entry_target = math.ceil(settings.max_per_run * settings.entry_priority_share)
-    ai_target = math.ceil(settings.max_per_run * settings.ai_priority_share)
-    add_from([job for job in ranked if job.experience_level == "entry"
-              and (job.category == "ai" or is_automation(job))], entry_target)
-    add_from([job for job in ranked if job.category == "ai"], ai_target)
-    add_from([job for job in ranked if job.experience_level == "entry"], entry_target)
+    # Give each role category a fair first look before filling remaining slots.
+    # This prevents one large AI/entry-level source from monopolising a small batch.
+    categories = sorted(
+        {job.category for job in ranked},
+        key=lambda category: (
+            -max(item.quality_score for item in ranked if item.category == category),
+            category,
+        ),
+    )
+    for category in categories:
+        if len(selected) >= settings.max_per_run:
+            break
+        add_from([job for job in ranked if job.category == category], 1)
     add_from(ranked, settings.max_per_run)
     return sorted(selected, key=lambda item: item.quality_score, reverse=True)
 
@@ -164,33 +170,47 @@ def process(
             key=lambda item: item.quality_score,
             reverse=True,
         )
-        # Alternate AI and entry candidates so neither fills the verification
-        # budget before the other gets checked. Keep quality ordering in each.
-        ai_pool = sorted([job for job in candidate_pool if job.category == "ai"],
-                         key=lambda job: job.experience_level != "entry")
-        entry_pool = sorted([job for job in candidate_pool if job.experience_level == "entry"],
-                            key=lambda job: not (job.category == "ai" or is_automation(job)))
-        priority_pool = [
-            job for pair in zip_longest(ai_pool, entry_pool)
-            for job in pair if job is not None
-        ] + candidate_pool
+        # Interleave categories by their best score. The verification budget is
+        # deliberately independent of the number of posts allowed in this run.
+        categories = sorted(
+            {job.category for job in candidate_pool},
+            key=lambda category: (
+                -max(item.quality_score for item in candidate_pool if item.category == category),
+                category,
+            ),
+        )
+        category_pools = {
+            category: [job for job in candidate_pool if job.category == category]
+            for category in categories
+        }
+        priority_pool: list[Job] = []
+        while any(category_pools.values()):
+            for category in categories:
+                if category_pools[category]:
+                    priority_pool.append(category_pools[category].pop(0))
+        priority_pool.extend(candidate_pool)
         candidates: list[Job] = []
         candidate_source_counts: Counter[str] = Counter()
         candidate_urls: set[str] = set()
         candidate_fingerprints: set[str] = set()
         for job in priority_pool:
-            if len(candidates) >= settings.max_per_run * 2:
+            if len(candidates) >= settings.max_link_check_candidates:
                 break
             if (job.canonical_url in seen_urls or job.fingerprint in seen_fingerprints
                     or job.canonical_url in candidate_urls
                     or job.fingerprint in candidate_fingerprints):
                 continue
-            if candidate_source_counts[job.source] >= settings.max_per_source * 2:
+            if candidate_source_counts[job.source] >= settings.max_link_check_per_source:
                 continue
             candidates.append(job)
             candidate_urls.add(job.canonical_url)
             candidate_fingerprints.add(job.fingerprint)
             candidate_source_counts[job.source] += 1
+        LOGGER.info(
+            "link_check_candidates=%d candidate_limit=%d per_source_limit=%d",
+            len(candidates), settings.max_link_check_candidates,
+            settings.max_link_check_per_source,
+        )
         workers = min(12, len(candidates))
         if workers:
             with ThreadPoolExecutor(max_workers=workers) as executor:

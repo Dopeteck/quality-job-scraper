@@ -15,7 +15,7 @@ on:
         type: string
   schedule:
     # Lagos: 07:15 primary, 11:35 and 18:45 recovery attempts.
-    # A shared daily quota stops after two submissions.
+    # Four verified submissions/day across all three runs; per-run cap remains two.
     - cron: "15 6 * * *"
     - cron: "35 10 * * *"
     - cron: "45 17 * * *"
@@ -79,7 +79,7 @@ jobs:
             echo "::notice::No Make webhook or Google Sheets credentials are configured; running a safe preview instead."
             quality-jobs --dry-run
           else
-            quality-jobs --daily-limit 2
+            quality-jobs --daily-limit 4
           fi
       - name: Save cross-run deduplication state
         if: always() && !cancelled() && steps.restore-state.outcome == 'success' && hashFiles('data/seen.json') != '' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
