@@ -635,15 +635,21 @@ def test_small_batch_prefers_distinct_role_categories():
     assert len({item.category for item in selected}) == 2
 
 
-def test_all_recognised_categories_receive_the_same_category_bonus():
+def test_role_category_does_not_inflate_quality_score():
     from quality_jobs.classify import classify
     from quality_jobs.scoring import score_job
-    titles = ["AI Response Evaluator", "Customer Support Specialist"]
+    titles = [
+        "AI Response Evaluator",
+        "Customer Support Specialist",
+        "Software Developer",
+    ]
     scores = []
     for title in titles:
         item = job(title=title, description="Complete assigned tasks using documented procedures.")
         classify(item)
         score_job(item, settings())
-        assert "recognized role category (+2)" in item.quality_reasons
+        assert "recognized role category (+2)" not in item.quality_reasons
         scores.append(item.quality_score)
-    assert scores[0] == scores[1]
+    # Freshness, verified scope, employer and description contribute 9 points;
+    # category membership itself must contribute zero.
+    assert scores == [9, 9, 9]
