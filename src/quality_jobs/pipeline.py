@@ -194,13 +194,13 @@ def process(
         candidate_urls: set[str] = set()
         candidate_fingerprints: set[str] = set()
         for job in priority_pool:
-            if len(candidates) >= settings.max_per_run * 2:
+            if len(candidates) >= settings.max_link_check_candidates:
                 break
             if (job.canonical_url in seen_urls or job.fingerprint in seen_fingerprints
                     or job.canonical_url in candidate_urls
                     or job.fingerprint in candidate_fingerprints):
                 continue
-            if candidate_source_counts[job.source] >= settings.max_per_source * 2:
+            if candidate_source_counts[job.source] >= settings.max_link_check_per_source:
                 continue
             candidates.append(job)
             candidate_urls.add(job.canonical_url)
