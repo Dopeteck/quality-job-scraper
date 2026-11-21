@@ -105,12 +105,9 @@ def score_job(job: Job, settings: Settings, now: datetime | None = None) -> Job:
     if job.salary:
         score += 2
         reasons.append("salary disclosed (+2)")
-    if job.category == "ai":
+    if job.category in {"ai", "web3", "support", "marketing", "design", "data", "automation", "tech"}:
         score += 2
-        reasons.append("AI opportunity (+2)")
-    if is_automation(job):
-        score += 2
-        reasons.append("automation work (+2)")
+        reasons.append("recognized role category (+2)")
     if job.experience_level == "entry":
         score += 3
         reasons.append("entry level (+3)")
