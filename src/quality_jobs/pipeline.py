@@ -95,10 +95,10 @@ def _balanced_limit(jobs: list[Job], settings: Settings) -> list[Job]:
     # This prevents one large AI/entry-level source from monopolising a small batch.
     categories = sorted(
         {job.category for job in ranked},
-        key=lambda category: max(
-            item.quality_score for item in ranked if item.category == category
+        key=lambda category: (
+            -max(item.quality_score for item in ranked if item.category == category),
+            category,
         ),
-        reverse=True,
     )
     for category in categories:
         if len(selected) >= settings.max_per_run:
@@ -174,10 +174,10 @@ def process(
         # deliberately independent of the number of posts allowed in this run.
         categories = sorted(
             {job.category for job in candidate_pool},
-            key=lambda category: max(
-                item.quality_score for item in candidate_pool if item.category == category
+            key=lambda category: (
+                -max(item.quality_score for item in candidate_pool if item.category == category),
+                category,
             ),
-            reverse=True,
         )
         category_pools = {
             category: [job for job in candidate_pool if job.category == category]
