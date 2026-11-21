@@ -647,9 +647,11 @@ def test_role_category_does_not_inflate_quality_score():
     for title in titles:
         item = job(title=title, description="Complete assigned tasks using documented procedures.")
         classify(item)
+        # Hold experience level constant so this isolates category scoring.
+        item.experience_level = "not_specified"
         score_job(item, settings())
         assert "recognized role category (+2)" not in item.quality_reasons
         scores.append(item.quality_score)
-    # Freshness, verified scope, salary, employer and description contribute
-    # 11 points; category membership itself must contribute zero.
-    assert scores == [11, 11, 11]
+    # Freshness, verified scope, salary and employer contribute 10 points;
+    # category membership itself must contribute zero.
+    assert scores == [10, 10, 10]
